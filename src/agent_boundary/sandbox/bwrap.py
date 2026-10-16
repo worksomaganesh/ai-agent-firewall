@@ -182,6 +182,15 @@ def build_bwrap_argv(
     args.extend(["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"])
     args.extend(["--dir", "/workspace", "--bind", str(workspace_copy), "/workspace"])
 
+    if (proxy_socket_path is not None) != (bridge_script_path is not None):
+        raise ValueError("Proxy socket and guest bridge script must be supplied together")
+    if proxy_socket_path is not None and bridge_script_path is not None:
+        if not proxy_socket_path.is_socket() or not bridge_script_path.is_file():
+            raise ValueError("Proxy socket or guest bridge script is missing")
+        args.extend(["--dir", "/run", "--dir", "/run/agent-boundary"])
+        args.extend(["--bind", str(proxy_socket_path), "/run/agent-boundary/proxy.sock"])
+        args.extend(["--ro-bind", str(bridge_script_path), "/run/agent-boundary/guest_bridge.py"])
+
     git_dir = workspace_copy / ".git"
     if git_dir.is_dir() and not git_dir.is_symlink():
         args.extend(["--ro-bind", str(git_dir), "/workspace/.git"])
@@ -195,6 +204,24 @@ def build_bwrap_argv(
     pyproject = workspace_copy / "pyproject.toml"
     if pyproject.is_file() and not pyproject.is_symlink():
         args.extend(["--ro-bind", str(pyproject), "/workspace/pyproject.toml"])
+
+    if policy is not None:
+        protected_roots = (".git", ".github/workflows", "pyproject.toml")
+        for protected in collect_policy_write_protections(workspace_copy, policy):
+            rel = protected.relative_to(workspace_copy).as_posix()
+            if any(rel == root or rel.startswith(root + "/") for root in protected_roots):
+                continue
+            args.extend(["--ro-bind", str(protected), "/workspace/" + rel])
+
+    sandbox_command = list(command)
+    if proxy_socket_path is not None and bridge_script_path is not None:
+        sandbox_command = [
+            "/usr/bin/python3",
+            "/run/agent-boundary/guest_bridge.py",
+            "--proxy-socket", "/run/agent-boundary/proxy.sock",
+            "--listen-port", str(proxy_port),
+            "--", *command,
+        ]
 
     args.extend(
         [
@@ -226,7 +253,7 @@ def build_bwrap_argv(
             "GIT_TERMINAL_PROMPT",
             "0",
             "--",
-            *command,
+            *sandbox_command,
         ]
     )
     return args
