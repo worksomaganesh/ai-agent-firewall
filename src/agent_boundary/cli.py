@@ -390,6 +390,85 @@ def review_session_cmd(
     console.print(f"Verify evidence with: agent-boundary verify-audit {root / 'audit.jsonl'}")
 
 
+@app.command("export-reviewed-changes")
+def export_reviewed_changes_cmd(
+    session_dir: Annotated[Path, typer.Argument(help="Completed session directory.")],
+    destination: Annotated[Path, typer.Argument(help="New or existing review-export directory; existing files are never overwritten.")],
+) -> None:
+    """Copy added/modified regular files into a separate review directory, never into the source project."""
+    try:
+        root = session_dir.expanduser().resolve(strict=True)
+        workspace = root / "workspace"
+        diff_path = root / "diff.json"
+        if not root.is_dir() or not diff_path.is_file() or workspace.is_symlink() or not workspace.is_dir():
+            raise ValueError("Refusing: session or staged workspace is not valid")
+        diff = json.loads(diff_path.read_text(encoding="utf-8"))
+        if not isinstance(diff, dict):
+            raise ValueError("diff.json must contain an object")
+        workspace_real = workspace.resolve(strict=True)
+        dest_input = destination.expanduser()
+        if dest_input.is_symlink():
+            raise ValueError("Refusing to export through a destination symlink")
+        dest_input.mkdir(parents=True, exist_ok=True)
+        dest_root = dest_input.resolve(strict=True)
+        if not dest_root.is_dir() or dest_root == workspace_real or dest_root.is_relative_to(workspace_real):
+            raise ValueError("Destination must be a directory outside the staged workspace")
+        candidates: list[tuple[Path, Path]] = []
+        seen: set[str] = set()
+        for category in ("added", "modified"):
+            entries = diff.get(category, [])
+            if not isinstance(entries, list):
+                raise ValueError(f"diff.json field {category!r} must be a list")
+            for entry in entries:
+                if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+                    raise ValueError(f"Invalid entry in diff.json field {category!r}")
+                raw = entry["path"]
+                rel = Path(raw)
+                if not raw or rel.is_absolute() or "\\" in raw or any(part in ("", ".", "..") for part in raw.split("/")):
+                    raise ValueError(f"Refusing unsafe changed path: {raw!r}")
+                if raw in seen:
+                    continue
+                seen.add(raw)
+                source_path = workspace_real.joinpath(*raw.split("/"))
+                current = workspace_real
+                for part in raw.split("/"):
+                    current = current / part
+                    if current.is_symlink():
+                        raise ValueError(f"Refusing to export symlink path: {raw!r}")
+                if not source_path.exists() or not source_path.is_file():
+                    # Directories are represented in diffs but their contents are handled by file entries.
+                    if source_path.is_dir():
+                        continue
+                    raise ValueError(f"Changed file is missing or not regular: {raw!r}")
+                if not source_path.resolve(strict=True).is_relative_to(workspace_real):
+                    raise ValueError(f"Changed path escapes staged workspace: {raw!r}")
+                target_path = dest_root.joinpath(*raw.split("/"))
+                parent = target_path.parent
+                if parent.exists() and not parent.resolve(strict=True).is_relative_to(dest_root):
+                    raise ValueError(f"Destination parent escapes export directory: {raw!r}")
+                if target_path.exists() or target_path.is_symlink():
+                    raise FileExistsError(f"Refusing to overwrite existing export: {raw!r}")
+                candidates.append((source_path, target_path))
+        for _source, target in candidates:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.parent.resolve(strict=True).is_relative_to(dest_root):
+                raise ValueError(f"Destination parent escapes export directory: {target}")
+            if target.exists() or target.is_symlink():
+                raise FileExistsError(f"Refusing to overwrite existing export: {target}")
+        copied = 0
+        for source_path, target_path in candidates:
+            with source_path.open("rb") as source_fh, target_path.open("xb") as target_fh:
+                shutil.copyfileobj(source_fh, target_fh)
+            target_path.chmod(0o600)
+            copied += 1
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        console.print(f"[bold red]EXPORT FAILED:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
+    console.print(f"[bold green]Exported {copied} changed file(s) for review.[/bold green]")
+    console.print(f"Review export: {dest_root}")
+    console.print("Deleted paths are listed in diff.json but are not applied. The original project is untouched.")
+
+
 @app.command("discard-workspace-copy")
 def discard_workspace_copy_cmd(
     session_dir: Annotated[Path, typer.Argument(help="Completed session directory.")],
