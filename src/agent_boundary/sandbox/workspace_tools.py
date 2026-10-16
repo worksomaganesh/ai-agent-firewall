@@ -12,7 +12,6 @@ import os
 import stat
 import uuid
 from pathlib import Path, PurePosixPath
-from typing import Callable
 
 from agent_boundary.policy.engine import ActionRequest
 from agent_boundary.sandbox.guard import GuardResult, GuardedActionGate

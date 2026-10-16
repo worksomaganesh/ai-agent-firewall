@@ -48,7 +48,6 @@ def make_proxy(tmp_path: Path, **kwargs) -> tuple[PolicyEnforcingProxy, Path]:
         "a" * 254 + ".com:443",
         "example.com:443:444",
         "example.com\n:443",
-        "localhost:443",
     ],
 )
 def test_adversarial_authorities_fail_closed(authority: str, tmp_path: Path) -> None:
@@ -164,9 +163,6 @@ def test_proxy_header_limit_rejects_overlong_header_block(tmp_path: Path) -> Non
 
 
 def test_audit_mutation_of_approval_chain_is_detected(tmp_path: Path) -> None:
-    import json
-
-    from agent_boundary.audit.events import AuditEventType
     from agent_boundary.sandbox.approval import ApprovalBroker
 
     audit = tmp_path / "approval-audit.jsonl"

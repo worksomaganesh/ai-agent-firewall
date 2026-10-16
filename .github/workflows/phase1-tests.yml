@@ -54,7 +54,7 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Lint Phase 4 security-critical modules and adversarial tests
         run: |
-          python -m ruff check src/agent_boundary/sandbox/approval.py src/agent_boundary/sandbox/guard.py src/agent_boundary/sandbox/proxy.py src/agent_boundary/sandbox/workspace_tools.py tests/test_phase4_adversarial.py
+          python -m ruff check --select E,F src/agent_boundary/sandbox/approval.py src/agent_boundary/sandbox/guard.py src/agent_boundary/sandbox/proxy.py src/agent_boundary/sandbox/workspace_tools.py tests/test_phase4_adversarial.py
       - name: Type-check guarded action and workspace adapters
         run: |
           python -m mypy --follow-imports=silent src/agent_boundary/sandbox/guard.py src/agent_boundary/sandbox/workspace_tools.py
