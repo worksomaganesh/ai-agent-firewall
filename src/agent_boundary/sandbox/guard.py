@@ -10,12 +10,16 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+from typing import Callable, TypeVar
 
 from agent_boundary.audit.events import AuditEventType
 from agent_boundary.audit.logger import AuditLogger
 from agent_boundary.policy.engine import ActionRequest, EvaluationResult, PolicyEngine
 from agent_boundary.policy.schema import Decision, PolicyDocument
 from agent_boundary.sandbox.approval import ApprovalBroker
+
+
+T = TypeVar('T')
 
 
 @dataclass(frozen=True)
@@ -78,8 +82,17 @@ class GuardedActionGate:
             },
         )
 
-    def authorize(self, request: ActionRequest) -> GuardResult:
-        """Return an explicit allow/deny result; no action is executed by this method."""
+    def authorize(
+        self,
+        request: ActionRequest,
+        target_state_provider: Callable[[], str] | None = None,
+    ) -> GuardResult:
+        """Authorize a mediated action and optionally bind approval to target state.
+
+        A target_state_provider should return a stable fingerprint for the exact
+        resource an adapter will mutate. It is sampled before prompting and again
+        immediately after approval.
+        """
         result = self.engine.evaluate(request)
         if result.decision is Decision.DENY:
             self._audit(request, result, False, result.reason)
@@ -104,10 +117,23 @@ class GuardedActionGate:
             )
 
         action_name = f"{request.category}.{request.operation}"
-        phrase = self._approval_phrase(request, result.normalized_target, result.matched_rule_id)
+        try:
+            initial_state = target_state_provider() if target_state_provider is not None else None
+        except (OSError, RuntimeError, ValueError) as exc:
+            reason = f"Unable to fingerprint target before approval: {type(exc).__name__}"
+            self._audit(request, result, False, reason)
+            return GuardResult(
+                False, result.decision, request, result.normalized_target,
+                result.matched_rule_id, reason,
+            )
+        bound_target = result.normalized_target
+        if initial_state is not None:
+            state_hash = hashlib.sha256(initial_state.encode("utf-8")).hexdigest()
+            bound_target = f"{result.normalized_target}#state-sha256={state_hash}"
+        phrase = self._approval_phrase(request, bound_target, result.matched_rule_id)
         grant = self.approval_broker.request_action(
             action=action_name,
-            target=result.normalized_target,
+            target=bound_target,
             rule_id=result.matched_rule_id,
             reason=result.reason,
             confirmation_phrase=phrase,
@@ -123,13 +149,25 @@ class GuardedActionGate:
 
         # Re-evaluate immediately before the caller performs the mediated action.
         current = self.engine.evaluate(request)
+        try:
+            current_state = target_state_provider() if target_state_provider is not None else None
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.approval_broker.revoke(grant)
+            reason = f"Unable to revalidate target after approval: {type(exc).__name__}"
+            self._audit(request, current, False, reason)
+            return GuardResult(
+                False, current.decision, request, current.normalized_target,
+                current.matched_rule_id, reason,
+            )
+        state_changed = current_state != initial_state
         if (
             current.decision is not Decision.REQUIRE_APPROVAL
             or current.matched_rule_id != result.matched_rule_id
             or current.normalized_target != result.normalized_target
+            or state_changed
         ):
             self.approval_broker.revoke(grant)
-            reason = "Policy decision, rule, or normalized target changed after approval"
+            reason = "Policy decision, rule, normalized target, or target state changed after approval"
             self._audit(request, current, False, reason)
             return GuardResult(
                 False, current.decision, request, current.normalized_target,
@@ -137,7 +175,7 @@ class GuardedActionGate:
             )
 
         consumed = self.approval_broker.consume(
-            grant, action_name, current.normalized_target, current.matched_rule_id
+            grant, action_name, bound_target, current.matched_rule_id
         )
         if not consumed:
             reason = "Approval expired, was consumed, or did not match the exact action"
@@ -153,3 +191,38 @@ class GuardedActionGate:
             current.matched_rule_id, "Explicit one-use host approval consumed",
             approval_used=True,
         )
+
+    def perform(
+        self,
+        request: ActionRequest,
+        operation: Callable[[], T],
+        target_state_provider: Callable[[], str] | None = None,
+    ) -> tuple[GuardResult, T | None]:
+        """Run a mediated adapter callback only after this gate authorizes it.
+
+        The callback must operate on the exact target represented by request, and
+        should use target_state_provider for mutable filesystem resources. This is
+        intended for trusted host-side adapters, not as a general sandbox bypass.
+        """
+        decision = self.authorize(request, target_state_provider=target_state_provider)
+        if not decision.allowed:
+            return decision, None
+        try:
+            return decision, operation()
+        except Exception as exc:
+            self.audit_logger.log_event(
+                AuditEventType.ACTION_EVALUATED,
+                {
+                    "action_id": request.action_id,
+                    "actor": request.actor,
+                    "category": request.category,
+                    "operation": request.operation,
+                    "target": decision.normalized_target,
+                    "policy_decision": decision.decision.value,
+                    "enforced_decision": "allow",
+                    "rule_id": decision.rule_id,
+                    "execution_result": "error",
+                    "error_type": type(exc).__name__,
+                },
+            )
+            raise
