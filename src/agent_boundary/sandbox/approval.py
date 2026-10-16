@@ -101,6 +101,7 @@ class ApprovalBroker:
             "\n[agent-boundary approval required]\n"
             f"Action: {action}\nDestination: {target}\nPolicy rule: {rule_id}\n"
             f"Reason: {reason[:240]}\n"
+            "This prompt is shown on the host terminal, never through agent stdin.\\n"
             f"This approves ONE connection to this exact destination for at most {self.ttl_seconds:g}s.\n"
             f"Type exactly 'APPROVE {target}' to allow, or anything else to deny: "
         )
