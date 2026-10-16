@@ -14,6 +14,7 @@ import pytest
 from typer.testing import CliRunner
 
 from agent_boundary.cli import app
+from agent_boundary.audit.verifier import verify_audit_log
 from agent_boundary.sandbox.bwrap import (
     ResourceLimits,
     SandboxError,
@@ -174,9 +175,13 @@ def test_preflight_failure_never_launches_target(monkeypatch: pytest.MonkeyPatch
     assert result.sandbox_started is False
     assert result.exit_code == 78
     assert not marker.exists()
-    log_text = (result.session_dir / "audit.jsonl").read_text(encoding="utf-8")
+    audit_path = result.session_dir / "audit.jsonl"
+    log_text = audit_path.read_text(encoding="utf-8")
     assert "SANDBOX_INIT_FAILED" in log_text
     assert "target_command_started" in log_text
+    assert verify_audit_log(audit_path).valid
+    report = (result.session_dir / "session_report.md").read_text(encoding="utf-8")
+    assert "SANDBOX NOT STARTED" in report
 
 
 @pytest.mark.sandbox
@@ -195,10 +200,11 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
     (source / "app.py").write_text("before\n", encoding="utf-8")
     proof_file = "phase2-proof.json"
     script = (
-        "import json, pathlib, socket; "
+        import json, pathlib, socket, resource; 
         "ws=pathlib.Path('/workspace'); "
         "e={'dotenv_absent': not (ws/'.env').exists(), "
-        "'host_source_path_absent': not pathlib.Path(" + repr(str(source.resolve())) + ").exists()}; "
+        "'host_source_path_absent': not pathlib.Path(" + repr(str(source.resolve())) + ").exists(), "
+        "'nofile_limit': resource.getrlimit(resource.RLIMIT_NOFILE)[0]}; "
         "pathlib.Path('" + proof_file + "').write_text(json.dumps(e)); "
         "(ws/'app.py').write_text('after\\n'); "
         "s=socket.socket(); s.settimeout(1); "
@@ -217,7 +223,16 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
     assert secret.read_text(encoding="utf-8") == "PHASE2_TEST_SECRET=not-copied\n"
     assert (result.workspace_copy / "app.py").read_text(encoding="utf-8") == "after\n"
     proof = json.loads((result.workspace_copy / proof_file).read_text(encoding="utf-8"))
-    assert proof == {"dotenv_absent": True, "host_source_path_absent": True, "network_blocked": True}
+    assert proof == {
+        "dotenv_absent": True,
+        "host_source_path_absent": True,
+        "network_blocked": True,
+        "nofile_limit": 128,
+    }
+    assert result.changes["modified"] and any(item["path"] == "app.py" for item in result.changes["modified"])
+    assert (result.session_dir / "diff.json").is_file()
     report = (result.session_dir / "session_report.md").read_text(encoding="utf-8")
     assert "OS SANDBOX CHILD STARTED" in report
+    assert "Live Network Policy Decisions" in report
     assert "Outbound networking" in report
+    assert verify_audit_log(result.session_dir / "audit.jsonl").valid
