@@ -1,4 +1,4 @@
-name: Phase 1 Tests
+name: Phase 1 + Phase 2 Tests
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   tests:
-    name: Python 3.11 acceptance tests
+    name: Python 3.11 acceptance and Linux enforcement tests
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -35,5 +35,5 @@ jobs:
           if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true; fi
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]"
-      - name: Run Phase 1 acceptance and regression tests
+      - name: Run acceptance, proxy, and Linux sandbox enforcement tests
         run: python -m pytest --cov=agent_boundary --cov-report=term-missing

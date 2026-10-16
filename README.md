@@ -15,13 +15,13 @@ The roadmap contains **5 phases total: Phase 0 plus implementation Phases 1–4*
 |---|---|---|---|
 | **0 — Architecture and threat model** | Establish assets, trust boundaries, requirements, risks, and architecture | **Complete** | Linux-first design, threat scenarios, backend selection, acceptance criteria |
 | **1 — Reliable core** | Build the policy/control plane and audit foundation | **Complete against the current acceptance suite** | Strict YAML schema, deterministic policy engine, simulation, JSONL hash-chain audit, verifier, reports, regression tests and CI |
-| **2 — OS isolation and live network policy** | Run commands in a Linux sandbox with static filesystem protections, resource caps, network mediation, audit evidence and diffs | **Implementation committed; final validation in progress** | Bubblewrap namespaces, Seccomp-BPF, rlimits, fail-closed preflight, private workspace copy, host UNIX-socket policy proxy, guest loopback bridge, live network decisions, audit/report integration and enforcement tests |
+| **2 — OS isolation and live network policy** | Run commands in a Linux sandbox with static filesystem protections, resource caps, network mediation, audit evidence and diffs | **Complete — latest Linux CI passed** | Bubblewrap namespaces, Seccomp-BPF, rlimits, fail-closed preflight, private workspace copy, host UNIX-socket policy proxy, guest loopback bridge, live network decisions, audit/report integration and enforcement tests |
 | **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **Not started** | Host TTY approval broker, expiring action-bound approvals, target revalidation, safer restore/review flow and guarded tool integrations |
 | **4 — Adversarial evaluation and release** | Validate the threat model and prepare a responsible release | **Not started** | Adversarial fixtures, supported-Linux CI matrix, static/type checks, independent review, reproducible demos, release packaging and documented residual risks |
 
-**How much is done?** Phases 0 and 1 are complete. Phase 2 is being implemented and tested now; it is not marked complete until the latest full CI run and real Linux enforcement test pass. Phases 3 and 4 have not started. The project is not production-ready.
+**How much is done?** Phases 0, 1 and 2 are complete: **3 of 5 roadmap phases (60% by phase count)**. That is not a claim that 60% of total engineering effort is finished; the remaining phases include approvals, recovery, wider adversarial evaluation and release hardening. The latest Linux CI run passed **26 tests**, including the real Bubblewrap isolation and guest-to-host proxy bridge test. Phases 3 and 4 have not started. The project is not production-ready.
 
-Check the actual status in [GitHub Actions](https://github.com/worksomaganesh/ai-agent-firewall/actions).
+Check the [successful Linux CI run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38911615189) and the [full Actions history](https://github.com/worksomaganesh/ai-agent-firewall/actions).
 
 ## Phase details
 
@@ -43,7 +43,7 @@ Check the actual status in [GitHub Actions](https://github.com/worksomaganesh/ai
 
 **Phase 1 is a control plane, not OS enforcement.** A simulated decision is not proof that Linux blocked an action.
 
-### Phase 2 — OS isolation and live network policy (implementation in progress)
+### Phase 2 — OS isolation and live network policy (complete)
 
 The current runner is designed to:
 
