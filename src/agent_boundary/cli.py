@@ -347,5 +347,73 @@ def report_cmd(
         console.print(report_md)
 
 
+
+@app.command("review-session")
+def review_session_cmd(
+    session_dir: Annotated[Path, typer.Argument(help="Session directory containing diff.json and session-summary.json.")],
+) -> None:
+    """Review changed paths from a completed isolated session without copying changes back."""
+    try:
+        root = session_dir.expanduser().resolve(strict=True)
+        if not root.is_dir() or (root / "audit.jsonl").is_symlink():
+            raise ValueError("Session path is not a valid session directory")
+        diff_path = root / "diff.json"
+        summary_path = root / "session-summary.json"
+        if not diff_path.is_file() or not summary_path.is_file():
+            raise ValueError("Session is missing diff.json or session-summary.json")
+        diff = json.loads(diff_path.read_text(encoding="utf-8"))
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        if not isinstance(diff, dict) or not all(key in diff for key in ("added", "modified", "deleted")):
+            raise ValueError("diff.json has an invalid structure")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        console.print(f"[bold red]SESSION REVIEW FAILED:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
+
+    console.print(f"[bold]Session:[/bold] {summary.get('session_id', root.name)}")
+    console.print(f"[bold]Sandbox started:[/bold] {summary.get('sandbox_started', 'unknown')}")
+    console.print(f"[bold]Exit code:[/bold] {summary.get('exit_code', 'unknown')}")
+    table = Table(title="Staged Workspace Changes")
+    table.add_column("Change", style="cyan")
+    table.add_column("Count", justify="right")
+    for key, label in (("added", "Added"), ("modified", "Modified"), ("deleted", "Deleted")):
+        table.add_row(label, str(len(diff[key])))
+    console.print(table)
+    for key, label in (("added", "Added"), ("modified", "Modified"), ("deleted", "Deleted")):
+        entries = diff[key]
+        if entries:
+            console.print(f"\n[bold]{label} paths:[/bold]")
+            for entry in entries:
+                path_value = entry.get("path", "<invalid path>")
+                console.print(f"  - {path_value}")
+    console.print("\nNo changes have been copied into the original source workspace.")
+    console.print(f"Review the staged copy at: {root / 'workspace'}")
+    console.print(f"Verify evidence with: agent-boundary verify-audit {root / 'audit.jsonl'}")
+
+
+@app.command("discard-workspace-copy")
+def discard_workspace_copy_cmd(
+    session_dir: Annotated[Path, typer.Argument(help="Completed session directory.")],
+    yes: Annotated[bool, typer.Option("--yes", help="Confirm deleting only this session's staged workspace copy.")] = False,
+) -> None:
+    """Delete a staged workspace copy while retaining session audit evidence and reports."""
+    if not yes:
+        console.print("Nothing deleted. Re-run with --yes after reviewing the session.")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR))
+    try:
+        root = session_dir.expanduser().resolve(strict=True)
+        if not root.is_dir() or not (root / "session-summary.json").is_file() or not (root / "audit.jsonl").is_file():
+            raise ValueError("Refusing: path is not a recognized agent-boundary session directory")
+        workspace_copy = root / "workspace"
+        metadata = workspace_copy.lstat()
+        if workspace_copy.is_symlink() or not workspace_copy.is_dir() or workspace_copy.resolve(strict=True).parent != root:
+            raise ValueError("Refusing: workspace copy is not a direct, non-symlink child of the session directory")
+        shutil.rmtree(workspace_copy)
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]DISCARD FAILED:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
+    console.print("[bold green]Staged workspace copy discarded.[/bold green]")
+    console.print("Audit log, session report, diff, manifests, and summary were preserved.")
+
+
 if __name__ == "__main__":
     app()
