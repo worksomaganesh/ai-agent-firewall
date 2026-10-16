@@ -115,3 +115,60 @@ def test_action_gate_never_executes_denied_action(tmp_path: Path) -> None:
     if result.allowed:
         operation()
     assert not called
+
+
+
+def test_target_state_change_while_prompt_is_open_revokes_approval(tmp_path: Path) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    logger = AuditLogger(audit_path, "guard-state-test", EnforcementMode.OS_ENFORCED_BWRAP)
+    state = ["inode=10;sha256=before"]
+    prompts: list[str] = []
+
+    def reader(prompt: str, _timeout: float) -> str | None:
+        prompts.append(prompt)
+        match = re.search(r"Type exactly '([^']+)'", prompt)
+        state[0] = "inode=11;sha256=attacker-replaced"
+        return match.group(1) if match else None
+
+    broker = ApprovalBroker(logger, tty_reader=reader)
+    gate = GuardedActionGate(load_policy(POLICY_PATH), logger, broker)
+    result = gate.authorize(
+        ActionRequest(category="filesystem", operation="write",
+                      target="/workspace/.github/workflows/deploy.yml", action_id="state-race-1"),
+        target_state_provider=lambda: state[0],
+    )
+    assert not result.allowed
+    assert "target state changed" in result.reason
+    assert prompts
+    events = read_audit(audit_path)
+    assert any(
+        event["event_type"] == AuditEventType.APPROVAL_DENIED.value
+        for event in events
+    )
+    assert verify_audit_log(audit_path).valid
+
+
+def test_perform_never_calls_operation_after_policy_denial(tmp_path: Path) -> None:
+    gate, _audit = setup_approving_gate(tmp_path)
+    calls: list[str] = []
+    result, value = gate.perform(
+        ActionRequest(category="command", operation="exec", target="sudo id", action_id="perform-deny"),
+        lambda: calls.append("executed") or "unsafe",
+    )
+    assert not result.allowed
+    assert value is None
+    assert calls == []
+
+
+def test_perform_calls_mediated_callback_after_explicit_approval(tmp_path: Path) -> None:
+    gate, audit = setup_approving_gate(tmp_path)
+    calls: list[str] = []
+    result, value = gate.perform(
+        ActionRequest(category="filesystem", operation="write",
+                      target="/workspace/.github/workflows/deploy.yml", action_id="perform-allow"),
+        lambda: calls.append("executed") or "completed",
+    )
+    assert result.allowed and result.approval_used
+    assert value == "completed"
+    assert calls == ["executed"]
+    assert verify_audit_log(audit).valid
