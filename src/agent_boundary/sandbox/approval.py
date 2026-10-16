@@ -86,7 +86,39 @@ class ApprovalBroker:
     ) -> ApprovalGrant | None:
         """Prompt for approval of precisely one network.connect action."""
         target = self._format_target(host, port)
-        action = "network.connect"
+        return self.request_action(
+            action="network.connect",
+            target=target,
+            rule_id=rule_id,
+            reason=reason,
+            confirmation_phrase=f"APPROVE {target}",
+            display_target=target,
+        )
+
+    @staticmethod
+    def _safe_display(value: str, limit: int = 240) -> str:
+        """Remove control characters before displaying policy-controlled text on a TTY."""
+        return "".join(ch if ch >= " " and ch != "\\x7f" else " " for ch in value)[:limit]
+
+    def request_action(
+        self,
+        action: str,
+        target: str,
+        rule_id: str,
+        reason: str,
+        confirmation_phrase: str,
+        display_target: str | None = None,
+    ) -> ApprovalGrant | None:
+        """Create a one-use grant for one generic action and exact target."""
+        if not action or any(ch not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-" for ch in action):
+            raise ValueError("Approval action label contains unsupported characters")
+        if not target or "\\x00" in target or len(target) > 4096:
+            raise ValueError("Approval target is invalid")
+        if not confirmation_phrase or "\\n" in confirmation_phrase or "\\r" in confirmation_phrase:
+            raise ValueError("Approval confirmation phrase must be one line")
+        target_display = self._safe_display(display_target if display_target is not None else target)
+        reason_display = self._safe_display(reason)
+        rule_display = self._safe_display(rule_id, 128)
         self.audit_logger.log_event(
             AuditEventType.APPROVAL_REQUESTED,
             {
@@ -98,12 +130,12 @@ class ApprovalBroker:
             },
         )
         prompt = (
-            "\n[agent-boundary approval required]\n"
-            f"Action: {action}\nDestination: {target}\nPolicy rule: {rule_id}\n"
-            f"Reason: {reason[:240]}\n"
-            "This prompt is shown on the host terminal, never through agent stdin.\n"
-            f"This approves ONE connection to this exact destination for at most {self.ttl_seconds:g}s.\n"
-            f"Type exactly 'APPROVE {target}' to allow, or anything else to deny: "
+            "\\n[agent-boundary approval required]\\n"
+            f"Action: {action}\\nTarget: {target_display}\\nPolicy rule: {rule_display}\\n"
+            f"Reason: {reason_display}\\n"
+            "This prompt is shown on the host terminal, never through agent stdin.\\n"
+            f"This approves ONE exact action for at most {self.ttl_seconds:g}s.\\n"
+            f"Type exactly '{confirmation_phrase}' to allow, or anything else to deny: "
         )
         try:
             with self._prompt_lock:
@@ -111,7 +143,7 @@ class ApprovalBroker:
         except (OSError, RuntimeError, ValueError):
             response = None
 
-        if response != f"APPROVE {target}":
+        if response != confirmation_phrase:
             self.audit_logger.log_event(
                 AuditEventType.APPROVAL_DENIED,
                 {
@@ -137,8 +169,8 @@ class ApprovalBroker:
             {
                 "grant_id": grant.grant_id,
                 "action": grant.action,
-                "target": grant.target,
-                "rule_id": grant.rule_id,
+                "target": target,
+                "rule_id": rule_id,
                 "expires_in_seconds": self.ttl_seconds,
                 "uses": 1,
             },
