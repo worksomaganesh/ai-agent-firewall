@@ -30,6 +30,8 @@ from agent_boundary.audit.report import generate_session_report
 from agent_boundary.sandbox.seccomp import build_seccomp_filter
 from agent_boundary.sandbox.snapshot import changed_path_count, diff_snapshots, snapshot_workspace
 from agent_boundary.sandbox.workspace import StagingSummary, prepare_workspace_copy
+from agent_boundary.sandbox.proxy import PolicyEnforcingProxy
+from agent_boundary.policy.schema import Decision, PolicyDocument
 
 
 class SandboxError(RuntimeError):
@@ -144,6 +146,10 @@ def build_bwrap_argv(
     command: Sequence[str],
     seccomp_fd: int,
     status_fd: int | None = None,
+    proxy_socket_path: Path | None = None,
+    bridge_script_path: Path | None = None,
+    policy: PolicyDocument | None = None,
+    proxy_port: int = 18790,
 ) -> list[str]:
     """Construct the exact sandbox invocation without executing it."""
     if not command or any(not isinstance(arg, str) or "\x00" in arg for arg in command):

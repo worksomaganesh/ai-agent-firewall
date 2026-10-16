@@ -8,6 +8,9 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
+from agent_boundary.policy.engine import ActionRequest, PolicyEngine
+from agent_boundary.policy.schema import Decision, PolicyDocument
+
 
 class WorkspacePreparationError(ValueError):
     """Raised when a workspace cannot be staged without unsafe ambiguity."""
@@ -20,6 +23,7 @@ class StagingSummary:
     secret_paths_omitted: int
     metadata_paths_omitted: int
     special_files_omitted: int
+    policy_paths_omitted: int = 0
 
 
 _SECRET_NAMES = {
@@ -71,7 +75,7 @@ def _is_sensitive_directory_name(name: str) -> bool:
     return name.casefold() in _SECRET_DIRS
 
 
-def prepare_workspace_copy(source: Path, destination: Path) -> StagingSummary:
+def prepare_workspace_copy(source: Path, destination: Path, policy: PolicyDocument | None = None) -> StagingSummary:
     """Copy source to destination while omitting common credentials and host hooks.
 
     Symlinks are copied as links, never dereferenced. The original source tree is
@@ -100,7 +104,8 @@ def prepare_workspace_copy(source: Path, destination: Path) -> StagingSummary:
         raise WorkspacePreparationError(f"Staging destination already exists: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
 
-    counters = {"secrets": 0, "metadata": 0, "special": 0}
+    counters = {"secrets": 0, "metadata": 0, "special": 0, "policy": 0}
+    policy_engine = PolicyEngine(policy, workspace_override="/workspace") if policy else None
 
     def ignore(directory: str, names: list[str]) -> set[str]:
         current = Path(directory).relative_to(source)
@@ -142,6 +147,14 @@ def prepare_workspace_copy(source: Path, destination: Path) -> StagingSummary:
                 ignored.add(name)
                 counters["special"] += 1
                 continue
+
+            if policy_engine is not None:
+                target = "/workspace" if relative.as_posix() == "." else "/workspace/" + relative.as_posix()
+                decision = policy_engine.evaluate(ActionRequest(category="filesystem", operation="read", target=target))
+                if decision.decision is Decision.DENY:
+                    ignored.add(name)
+                    counters["policy"] += 1
+                    continue
 
             # Do not accidentally traverse nested repository metadata.
             if ".git" in parts and parts[0] != ".git":
@@ -209,4 +222,5 @@ def prepare_workspace_copy(source: Path, destination: Path) -> StagingSummary:
         secret_paths_omitted=counters["secrets"],
         metadata_paths_omitted=counters["metadata"],
         special_files_omitted=counters["special"],
+        policy_paths_omitted=counters["policy"],
     )

@@ -81,7 +81,7 @@ class AuditLogger:
                 hmac_sig=hmac_sig,
             )
             with self.log_path.open("a", encoding="utf-8") as fh:
-                fh.write(record.model_dump_json() + "\\n")
+                fh.write(record.model_dump_json() + "\n")
                 fh.flush()
             self._last_hash = event_hash
             self._seq += 1
