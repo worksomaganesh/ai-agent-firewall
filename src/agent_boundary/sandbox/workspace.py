@@ -224,3 +224,27 @@ def prepare_workspace_copy(source: Path, destination: Path, policy: PolicyDocume
         special_files_omitted=counters["special"],
         policy_paths_omitted=counters["policy"],
     )
+
+
+def collect_policy_write_protections(workspace_copy: Path, policy: PolicyDocument) -> list[Path]:
+    """Find existing paths to mount read-only under deny/approval write rules."""
+    engine = PolicyEngine(policy, workspace_override="/workspace")
+    candidates: list[Path] = []
+    for current_dir, dirnames, filenames in os.walk(workspace_copy, topdown=True, followlinks=False):
+        current = Path(current_dir)
+        for name in sorted(set(dirnames + filenames)):
+            path = current / name
+            rel = path.relative_to(workspace_copy).as_posix()
+            if rel == ".git" or rel.startswith(".git/") or rel == ".github/workflows" or rel.startswith(".github/workflows/"):
+                continue
+            if path.is_symlink():
+                continue
+            decision = engine.evaluate(ActionRequest(category="filesystem", operation="write", target="/workspace/" + rel))
+            if decision.decision is not Decision.ALLOW:
+                candidates.append(path)
+    selected: list[Path] = []
+    for path in sorted(candidates, key=lambda p: (len(p.relative_to(workspace_copy).parts), p.as_posix())):
+        if any(parent == path or parent in path.parents for parent in selected):
+            continue
+        selected.append(path)
+    return selected
