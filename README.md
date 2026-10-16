@@ -16,10 +16,10 @@ The roadmap contains **5 phases total: Phase 0 plus implementation Phases 1–4*
 | **0 — Architecture and threat model** | Establish assets, trust boundaries, requirements, risks, and architecture | **Complete** | Linux-first design, threat scenarios, backend selection, acceptance criteria |
 | **1 — Reliable core** | Build the policy/control plane and audit foundation | **Complete against the current acceptance suite** | Strict YAML schema, deterministic policy engine, simulation, JSONL hash-chain audit, verifier, reports, regression tests and CI |
 | **2 — OS isolation and live network policy** | Run commands in a Linux sandbox with static filesystem protections, resource caps, network mediation, audit evidence and diffs | **Complete — latest Linux CI passed** | Bubblewrap namespaces, Seccomp-BPF, rlimits, fail-closed preflight, private workspace copy, host UNIX-socket policy proxy, guest loopback bridge, live network decisions, audit/report integration and enforcement tests |
-| **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **In progress — initial slice implemented; 33 tests passed in Linux CI** | Host TTY approval broker, one-use expiring network approvals, policy revalidation before connect, session review and evidence-preserving staged-copy discard; broader guarded tool integrations remain planned |
+| **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **Complete — guarded-action and recovery tests pass in Linux CI** | Host TTY approval broker, exact one-use approvals, reusable guarded-action gate, guarded workspace file tools, target-state revalidation, review/export/discard workflows and audit evidence |
 | **4 — Adversarial evaluation and release** | Validate the threat model and prepare a responsible release | **Not started** | Adversarial fixtures, supported-Linux CI matrix, static/type checks, independent review, reproducible demos, release packaging and documented residual risks |
 
-**How much is done?** Phases 0, 1 and 2 are complete: **3 of 5 roadmap phases (60% by phase count)**. Phase 3 is underway; the initial approval and session-review slice is committed and passed 33 Linux CI tests. Broader command/tool mediation and recovery work remain. That is not a claim that 60% of total engineering effort is finished; the remaining phases include approvals, recovery, wider adversarial evaluation and release hardening. The latest Linux CI run passed **26 tests**, including the real Bubblewrap isolation and guest-to-host proxy bridge test. Phases 3 and 4 have not started. The project is not production-ready.
+**How much is done?** Phases 0–3 are complete: **4 of 5 roadmap phases (80% by phase count)**. The latest verified Phase 3 suite passed **49 tests** on Linux, including Bubblewrap enforcement, live proxy approval, guarded workspace file operations, target-change rejection, audit integrity and safe recovery workflows. This percentage counts roadmap phases, not total engineering effort or production readiness. Phase 4 remains and includes broader adversarial evaluation, support-matrix validation, static/type checks, independent review and release hardening. The project is still an educational prototype, not production-ready.
 
 Check the [successful Linux CI run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38911615189) and the [full Actions history](https://github.com/worksomaganesh/ai-agent-firewall/actions).
 
@@ -116,15 +116,18 @@ The runner applies per-process Linux rlimits for CPU time, address-space memory,
 
 The requested command should not start when preflight or sandbox setup fails. Session reports distinguish a sandbox child that started from a setup failure. If Bubblewrap is absent, too old, untrusted or blocked by kernel policy, fix the host configuration rather than falling back to unsandboxed execution.
 
-### Phase 3 — Approvals and recovery (in progress)
+### Phase 3 — Approvals and recovery (complete against the current implementation scope)
 
 - **Implemented:** host-side approval prompts reading from `/dev/tty`, not agent-controlled stdin; missing TTY and unexpected answers deny.
 - **Implemented:** one-use, short-lived network approvals bound to the exact `network.connect` action, host:port and matching policy rule; policy is re-evaluated immediately before the outbound connection.
 - **Implemented:** audit events for approval requested, granted, denied, expired and consumed; tests cover exact scope, expiry, one-use behavior and live proxy integration.
-- **Implemented:** `review-session` lists staged changed paths, `export-reviewed-changes` copies selected added/modified files into a separate review directory without overwriting, and `discard-workspace-copy --yes` discards only the isolated copy while preserving audit evidence.
-- **Implemented:** reusable `GuardedActionGate` routes explicitly mediated command/filesystem/tool actions through policy decisions, host-terminal approval, one-use grants, audit logging and immediate policy revalidation. Adapters can supply a target-state fingerprint; a change during approval revokes the grant.
-- **Boundary:** the gate protects only operations explicitly routed through a trusted adapter. It does not intercept arbitrary syscalls or automatically guard every child-process command; kernel sandbox enforcement remains necessary.
-- **Remaining:** integration of the gate into additional concrete agent/tool adapters, broader backup/restore workflows, and Phase 4 adversarial/release evaluation.
+- Host-side `/dev/tty` approval broker; unexpected answers, missing TTY, expiry, reuse and scope mismatch fail closed.
+- Network approval is exact host:port, rule-bound, one-use and revalidated immediately before the proxy opens an upstream connection.
+- Reusable `GuardedActionGate` for explicitly mediated command/filesystem/tool actions, with audit decisions, host approval, target-state fingerprinting and approval revocation if the target changes while the prompt is open.
+- Concrete `GuardedWorkspaceTools` for policy-gated regular-file reads, writes and deletes, rejecting traversal and symlink targets.
+- `review-session`, `export-reviewed-changes`, and `discard-workspace-copy` support review-first recovery. Exports go to a separate directory, refuse overwrites/traversal/symlinks, and never automatically overwrite the original project.
+- Automated tests cover approval scope/expiry/reuse, target replacement, denied callback suppression, secret-read denial, guarded file changes, symlink rejection, export traversal, and audit integrity.
+- **Boundary:** the gate protects only operations explicitly routed through a trusted adapter. It does not intercept arbitrary syscalls or automatically guard every child-process command; kernel sandbox enforcement remains necessary. Phase 4 covers broader adversarial evaluation and release hardening.
 - Latest passing Phase 3 CI run: https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38934258756
 - Clear separation in logs and reports between kernel-enforced controls, proxy decisions, policy evaluations and unobserved activity.
 
