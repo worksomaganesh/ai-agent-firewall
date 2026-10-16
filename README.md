@@ -104,10 +104,11 @@ The command runs against a **private staged copy**. Changes are not automaticall
 ~~~bash
 agent-boundary review-session ~/.local/state/agent-boundary/runs/ab-run-SESSIONID
 agent-boundary verify-audit ~/.local/state/agent-boundary/runs/ab-run-SESSIONID/audit.jsonl
+agent-boundary export-reviewed-changes ~/.local/state/agent-boundary/runs/ab-run-SESSIONID ./review-export
 agent-boundary discard-workspace-copy ~/.local/state/agent-boundary/runs/ab-run-SESSIONID --yes
 ~~~
 
-`review-session` lists changed paths without printing file contents. `discard-workspace-copy --yes` removes only that session's staged workspace copy; it preserves the audit log, report, diff, manifests and summary. There is no automatic write-back to the original project.
+`review-session` lists changed paths without printing file contents. `export-reviewed-changes` copies added/modified regular files into a separate review directory, refuses traversal, symlinks and overwrites, and never applies deletions. `discard-workspace-copy --yes` removes only that session's staged workspace copy; it preserves the audit log, report, diff, manifests and summary. There is no automatic write-back to the original project.
 
 #### Resource limits and fail-closed startup
 
@@ -120,8 +121,10 @@ The requested command should not start when preflight or sandbox setup fails. Se
 - **Implemented:** host-side approval prompts reading from `/dev/tty`, not agent-controlled stdin; missing TTY and unexpected answers deny.
 - **Implemented:** one-use, short-lived network approvals bound to the exact `network.connect` action, host:port and matching policy rule; policy is re-evaluated immediately before the outbound connection.
 - **Implemented:** audit events for approval requested, granted, denied, expired and consumed; tests cover exact scope, expiry, one-use behavior and live proxy integration.
-- **Implemented:** `review-session` lists staged changed paths and `discard-workspace-copy --yes` safely discards only the isolated copy while preserving audit evidence.
-- **Remaining:** guarded command/tool integrations for filesystem and process actions, broader recovery/backup mechanisms, and adversarial review.
+- **Implemented:** `review-session` lists staged changed paths, `export-reviewed-changes` copies selected added/modified files into a separate review directory without overwriting, and `discard-workspace-copy --yes` discards only the isolated copy while preserving audit evidence.
+- **Implemented:** reusable `GuardedActionGate` routes explicitly mediated command/filesystem/tool actions through policy decisions, host-terminal approval, one-use grants, audit logging and immediate policy revalidation. Adapters can supply a target-state fingerprint; a change during approval revokes the grant.
+- **Boundary:** the gate protects only operations explicitly routed through a trusted adapter. It does not intercept arbitrary syscalls or automatically guard every child-process command; kernel sandbox enforcement remains necessary.
+- **Remaining:** integration of the gate into additional concrete agent/tool adapters, broader backup/restore workflows, and Phase 4 adversarial/release evaluation.
 - Latest passing Phase 3 CI run: https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38934258756
 - Clear separation in logs and reports between kernel-enforced controls, proxy decisions, policy evaluations and unobserved activity.
 
