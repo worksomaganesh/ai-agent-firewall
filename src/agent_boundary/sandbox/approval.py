@@ -224,6 +224,17 @@ class ApprovalBroker:
         return False
 
     def revoke(self, grant: ApprovalGrant) -> None:
-        """Remove an unused grant when policy revalidation fails."""
+        """Remove an unused grant and audit why it can no longer be used."""
         with self._grant_lock:
-            self._grants.pop(grant.grant_id, None)
+            stored = self._grants.pop(grant.grant_id, None)
+        if stored is not None:
+            self.audit_logger.log_event(
+                AuditEventType.APPROVAL_DENIED,
+                {
+                    "grant_id": grant.grant_id,
+                    "action": grant.action,
+                    "target": grant.target,
+                    "rule_id": grant.rule_id,
+                    "reason": "Approval revoked because the action could not be safely revalidated",
+                },
+            )
