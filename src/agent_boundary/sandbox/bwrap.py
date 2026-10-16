@@ -395,7 +395,7 @@ def _extend_report(session_dir: Path, changes: dict[str, list[dict[str, object]]
         "- Network require-approval rules fail closed until the Phase 3 approval broker exists; HTTPS payloads remain opaque after an allowed CONNECT",
         "- Environment: host environment variables and credentials are not forwarded; the guest bridge supplies minimal environment variables and local proxy settings",
         "- Workspace policy status: deny-read paths are omitted during staging; write-deny and require-approval targets are mounted read-only where supported",
-        f"- Paths omitted by filesystem policy: {staging.policy_paths_omitted if staging else 0}",
+        f"- Paths omitted by filesystem policy: {result.get('policy_paths_omitted', 0)}",
         f"- Changed staged paths: **{changed_count}**",
         "",
         "## 6. Private Workspace Copy Changes",
@@ -661,6 +661,7 @@ def run_sandboxed(
                     "sandbox_started": sandbox_started,
                     "exit_code": exit_code,
                     "timed_out": timed_out,
+                    "policy_paths_omitted": staging.policy_paths_omitted if staging else 0,
                 },
             )
         except (OSError, ValueError, RuntimeError) as report_error:
