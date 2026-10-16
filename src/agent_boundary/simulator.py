@@ -79,8 +79,13 @@ def run_simulation(
     output_dir.mkdir(parents=True, exist_ok=True)
     session_id = f"ab-sim-{uuid.uuid4().hex[:12]}"
     audit_path = output_dir / "audit.jsonl"
-    if audit_path.exists():
-        audit_path.unlink()
+    report_path = output_dir / "session_report.md"
+    existing_outputs = [path.name for path in (audit_path, report_path) if path.exists()]
+    if existing_outputs:
+        raise FileExistsError(
+            f"Refusing to overwrite existing session output(s) in {output_dir}: "
+            + ", ".join(existing_outputs)
+        )
 
     logger = AuditLogger(
         log_path=audit_path,

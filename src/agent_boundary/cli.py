@@ -154,7 +154,11 @@ def simulate_cmd(
         console.print(f"[bold red]SCENARIO ERROR:[/bold red] {exc}")
         raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
 
-    summary = run_simulation(policy=doc, scenario=scen, output_dir=output_dir)
+    try:
+        summary = run_simulation(policy=doc, scenario=scen, output_dir=output_dir)
+    except (OSError, ValueError) as exc:
+        console.print(f"[bold red]SIMULATION FAILED:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
 
     console.print(
         "[bold yellow]====================================================================[/bold yellow]"

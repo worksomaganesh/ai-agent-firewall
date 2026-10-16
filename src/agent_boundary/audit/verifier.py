@@ -52,7 +52,18 @@ def verify_audit_log(
             errors=[f"Audit log file not found: {log_path}"],
         )
 
-    raw_lines = log_path.read_text(encoding="utf-8").splitlines()
+    try:
+        raw_lines = log_path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeError) as exc:
+        return AuditVerificationResult(
+            valid=False,
+            records_checked=0,
+            head_hash="",
+            hmac_verified=False,
+            head_hash_anchored=False,
+            errors=[f"Unable to read audit log {log_path}: {exc}"],
+        )
+
     if not raw_lines:
         return AuditVerificationResult(
             valid=False,
@@ -66,6 +77,13 @@ def verify_audit_log(
     expected_prev_hash = GENESIS_PREV_HASH
     last_hash = GENESIS_PREV_HASH
     hmac_checked_all = True
+    records_checked = 0
+    if require_hmac and not resolved_key:
+        errors.append(
+            "HMAC verification was required, but no key was supplied through "
+            "hmac_key or AGENT_BOUNDARY_AUDIT_KEY."
+        )
+        hmac_checked_all = False
 
     for idx, line in enumerate(raw_lines):
         line_no = idx + 1
@@ -76,6 +94,7 @@ def verify_audit_log(
             errors.append(f"Line {line_no}: Malformed audit record: {exc}")
             break
 
+        records_checked += 1
         if record.seq != idx:
             errors.append(
                 f"Line {line_no}: Sequence number mismatch "
@@ -109,10 +128,11 @@ def verify_audit_log(
         elif record.hmac_sig:
             if not resolved_key:
                 hmac_checked_all = False
-                warnings.append(
-                    f"Line {line_no} (seq={record.seq}): Record has hmac_sig, but no "
-                    "AGENT_BOUNDARY_AUDIT_KEY was supplied to verify it."
-                )
+                if not require_hmac:
+                    warnings.append(
+                        f"Line {line_no} (seq={record.seq}): Record has hmac_sig, but no "
+                        "AGENT_BOUNDARY_AUDIT_KEY was supplied to verify it."
+                    )
             else:
                 expected_sig = compute_hmac_signature(resolved_key, record.event_hash)
                 if not hmac.compare_digest(expected_sig, record.hmac_sig):
@@ -145,7 +165,7 @@ def verify_audit_log(
 
     return AuditVerificationResult(
         valid=len(errors) == 0,
-        records_checked=len(raw_lines),
+        records_checked=records_checked,
         head_hash=last_hash,
         hmac_verified=bool(hmac_checked_all and resolved_key and len(errors) == 0),
         head_hash_anchored=head_anchored and len(errors) == 0,

@@ -36,6 +36,10 @@ class AuditLogger:
         self._seq = 0
         self._last_hash = GENESIS_PREV_HASH
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        # A new logger starts a new chain. Never append seq=0 to an existing chain.
+        # Exclusive creation also closes the check/create race for duplicate sessions.
+        with self.log_path.open("x", encoding="utf-8"):
+            pass
 
     @property
     def head_hash(self) -> str:

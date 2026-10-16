@@ -115,7 +115,10 @@ class PolicyEngine:
 
     def __init__(self, policy: PolicyDocument, workspace_override: str | None = None) -> None:
         self.policy = policy
-        self.workspace_root = posixpath.normpath(workspace_override or policy.workspace_root)
+        selected_root = workspace_override if workspace_override is not None else policy.workspace_root
+        if not selected_root.startswith("/"):
+            raise ValueError("Workspace root must be an absolute path")
+        self.workspace_root = posixpath.normpath(selected_root)
 
     def evaluate(self, request: ActionRequest) -> EvaluationResult:
         """Evaluate an action request using strict Deny > Require-Approval > Allow > Default-Deny."""
