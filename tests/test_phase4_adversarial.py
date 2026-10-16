@@ -20,11 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
 def make_proxy(tmp_path: Path, **kwargs) -> tuple[PolicyEnforcingProxy, Path]:
     audit = tmp_path / "audit.jsonl"
     logger = AuditLogger(audit, "phase4-proxy-adversarial", EnforcementMode.OS_ENFORCED_BWRAP)
+    kwargs.setdefault("request_timeout", 0.5)
     proxy = PolicyEnforcingProxy(
         tmp_path / "private" / "proxy.sock",
         load_policy(ROOT / "policies" / "strict-default.yaml"),
         logger,
-        request_timeout=0.5,
         **kwargs,
     )
     return proxy, audit
