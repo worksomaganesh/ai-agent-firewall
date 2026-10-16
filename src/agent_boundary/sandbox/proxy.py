@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 from agent_boundary.audit.events import AuditEventType
 from agent_boundary.audit.logger import AuditLogger
+from agent_boundary.sandbox.approval import ApprovalBroker, ApprovalGrant
 from agent_boundary.policy.engine import ActionRequest, PolicyEngine
 from agent_boundary.policy.schema import Decision, PolicyDocument
 
@@ -35,6 +36,7 @@ class _Access:
     matched_rule_id: str
     reason: str
     addresses: tuple[tuple, ...] = ()
+    approval_grant: ApprovalGrant | None = None
 
     @property
     def allowed(self) -> bool:
@@ -61,6 +63,7 @@ class PolicyEnforcingProxy:
         request_timeout: float = 15.0,
         resolver: Callable[[str, int], list[tuple]] | None = None,
         connector: Callable[[tuple], socket.socket] | None = None,
+        approval_broker: ApprovalBroker | None = None,
     ) -> None:
         self.socket_path = socket_path
         self.engine = PolicyEngine(policy, workspace_override="/workspace")
@@ -69,6 +72,7 @@ class PolicyEnforcingProxy:
         self.request_timeout = request_timeout
         self._resolver_override = resolver
         self._connector_override = connector
+        self.approval_broker = approval_broker or ApprovalBroker(audit_logger)
         self._ready = threading.Event()
         self._thread: threading.Thread | None = None
         self._server: socketserver.UnixStreamServer | None = None
