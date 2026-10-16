@@ -90,4 +90,30 @@ def generate_session_report(session_dir: Path) -> str:
         "- **Audit Hash Chain Boundary**: Each event is linked via `SHA-256(seq | prev_hash | canonical_payload)`. To protect against full-chain recomputation by a host script, supply `AGENT_BOUNDARY_AUDIT_KEY` (HMAC-SHA256) or record the Final Audit Head Hash above in an external receipt.",
         "",
     ]
+    network_events = [rec for rec in records if rec.event_type is AuditEventType.NETWORK_REQUEST]
+    network_rows: list[str] = []
+    network_allowed = network_denied = 0
+    for rec in network_events:
+        payload = rec.payload
+        enforced = str(payload.get("enforced_decision", "deny"))
+        if enforced == "allow":
+            network_allowed += 1
+        else:
+            network_denied += 1
+        network_rows.append(
+            f"| {rec.seq} | {payload.get('host', 'unparsed')}:{payload.get('port', 0)} | "
+            f"{payload.get('method', 'UNKNOWN')} | {payload.get('policy_decision', 'deny')} | "
+            f"**{enforced.upper()}** | {payload.get('matched_rule_id', 'unknown')} |"
+        )
+    report_lines.extend([
+        "", "## 4. Live Network Policy Decisions", "",
+        f"- Requests evaluated: {len(network_events)}",
+        f"- Allowed by proxy: {network_allowed}",
+        f"- Denied by proxy: {network_denied}",
+        "- HTTPS CONNECT payloads are relayed as opaque TLS bytes; encrypted paths and bodies are not inspected.",
+        "- Direct raw TCP/UDP/DNS attempts are blocked by the private network namespace and may not appear as individual proxy events.",
+        "", "| Audit Seq | Destination | Proxy method | Policy decision | Enforced decision | Rule |",
+        "|---:|---|---|---|---|---|",
+        *(network_rows if network_rows else ["| - | - | - | - | - | - |"]),
+    ])
     return "\n".join(report_lines)
