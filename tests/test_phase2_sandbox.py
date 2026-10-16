@@ -207,10 +207,13 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
         "'nofile_limit': resource.getrlimit(resource.RLIMIT_NOFILE)[0]}; "
         "pathlib.Path('" + proof_file + "').write_text(json.dumps(e)); "
         "(ws/'app.py').write_text('after\\n'); "
+        "p=socket.create_connection(('127.0.0.1',18790),timeout=3); "
+        "p.sendall(b'CONNECT evil.example.com:443 HTTP/1.1\\r\\nHost: evil.example.com:443\\r\\n\\r\\n'); "
+        "e['proxy_blocked']=b'403 Forbidden' in p.recv(4096); p.close(); "
         "s=socket.socket(); s.settimeout(1); "
         "exec(\"try:\\n s.connect(('1.1.1.1',443)); e['network_blocked']=False\\nexcept OSError:\\n e['network_blocked']=True\\nfinally:\\n s.close()\"); "
         "pathlib.Path('" + proof_file + "').write_text(json.dumps(e)); "
-        "assert e['dotenv_absent'] and e['host_source_path_absent'] and e['network_blocked']"
+        "assert e['dotenv_absent'] and e['host_source_path_absent'] and e['network_blocked'] and e['proxy_blocked']"
     )
     result = run_sandboxed(
         source,
@@ -227,6 +230,7 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
         "dotenv_absent": True,
         "host_source_path_absent": True,
         "network_blocked": True,
+        "proxy_blocked": True,
         "nofile_limit": 128,
     }
     assert result.changes["modified"] and any(item["path"] == "app.py" for item in result.changes["modified"])
@@ -234,5 +238,6 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
     report = (result.session_dir / "session_report.md").read_text(encoding="utf-8")
     assert "OS SANDBOX CHILD STARTED" in report
     assert "Live Network Policy Decisions" in report
+    assert "evil.example.com" in report
     assert "Outbound networking" in report
     assert verify_audit_log(result.session_dir / "audit.jsonl").valid
