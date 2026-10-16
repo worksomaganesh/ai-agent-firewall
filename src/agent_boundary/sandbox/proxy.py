@@ -346,10 +346,13 @@ class PolicyEnforcingProxy:
                 raise ProxyRequestError("Too many request headers")
         lengths = [value for name, value in headers if name == "content-length"]
         encodings = [value for name, value in headers if name == "transfer-encoding"]
-        if lengths and (len(set(lengths)) != 1 or not lengths[0].isdigit()):
-            raise ProxyRequestError("Ambiguous Content-Length")
-        if lengths and encodings:
-            raise ProxyRequestError("Transfer-Encoding with Content-Length is denied")
+        if len(lengths) > 1:
+            raise ProxyRequestError("Duplicate Content-Length headers are denied")
+        if lengths and not lengths[0].isdigit():
+            raise ProxyRequestError("Malformed Content-Length")
+        if encodings:
+            # Until request-body framing is fully normalized, refuse ambiguous Transfer-Encoding.
+            raise ProxyRequestError("Transfer-Encoding requests are not supported")
         return method, target, version, headers
 
     @staticmethod
@@ -383,6 +386,8 @@ class PolicyEnforcingProxy:
             method, target, version, headers = self._parse_headers(raw)
             hosts = [value for name, value in headers if name == "host"]
             if method == "CONNECT":
+                if any(name in {"content-length", "transfer-encoding"} for name, _ in headers):
+                    raise ProxyRequestError("CONNECT request bodies and transfer framing are not supported")
                 host, port = self._parse_authority(target)
                 if len(hosts) > 1:
                     raise ProxyRequestError("Multiple Host headers denied")
