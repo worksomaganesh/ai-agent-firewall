@@ -29,7 +29,7 @@ from agent_boundary.audit.logger import AuditLogger
 from agent_boundary.audit.report import generate_session_report
 from agent_boundary.sandbox.seccomp import build_seccomp_filter
 from agent_boundary.sandbox.snapshot import changed_path_count, diff_snapshots, snapshot_workspace
-from agent_boundary.sandbox.workspace import StagingSummary, prepare_workspace_copy
+from agent_boundary.sandbox.workspace import StagingSummary, prepare_workspace_copy, collect_policy_write_protections
 from agent_boundary.sandbox.proxy import PolicyEnforcingProxy
 from agent_boundary.policy.schema import Decision, PolicyDocument
 
@@ -424,6 +424,7 @@ def run_sandboxed(
     command: Sequence[str],
     output_root: Path | None = None,
     limits: ResourceLimits | None = None,
+    policy: PolicyDocument | None = None,
 ) -> SandboxRunResult:
     """Run a command inside Bubblewrap, recording evidence and retaining a private copy.
 
@@ -466,7 +467,8 @@ def run_sandboxed(
             "workspace_name": source.name,
             "command_name": Path(argv[0]).name,
             "argument_count": len(argv),
-            "network_mode": "isolated_no_external_network",
+            "network_mode": "isolated_net_namespace_with_policy_proxy",
+            "policy_id": policy.policy_id if policy else "implicit-default-deny",
         },
     )
 
@@ -480,12 +482,33 @@ def run_sandboxed(
     bwrap_version: str | None = None
     pre_manifest: dict[str, dict[str, object]] = {}
     post_manifest: dict[str, dict[str, object]] = {}
+    proxy_server: PolicyEnforcingProxy | None = None
+    proxy_directory: Path | None = None
 
     try:
         binary, bwrap_version = preflight_bubblewrap()
-        staging = prepare_workspace_copy(source, workspace_copy)
+        staging = prepare_workspace_copy(source, workspace_copy, policy=policy)
         pre_manifest = snapshot_workspace(workspace_copy)
         _write_json(session_dir / "baseline-manifest.json", pre_manifest)
+
+        proxy_directory = Path(tempfile.mkdtemp(prefix="abp-", dir="/tmp"))
+        proxy_directory.chmod(0o700)
+        proxy_socket_path = proxy_directory / "proxy.sock"
+        bridge_script_path = proxy_directory / "guest_bridge.py"
+        shutil.copyfile(Path(__file__).with_name("guest_bridge.py"), bridge_script_path)
+        bridge_script_path.chmod(0o400)
+        if policy is None:
+            proxy_policy = PolicyDocument(
+                schema_version="1.0",
+                policy_id="implicit-default-deny",
+                description="No policy supplied; all outbound network access is denied.",
+                workspace_root="/workspace",
+                default_decision=Decision.DENY,
+            )
+        else:
+            proxy_policy = policy
+        proxy_server = PolicyEnforcingProxy(proxy_socket_path, proxy_policy, logger)
+        proxy_server.start()
 
         seccomp_fd = _write_filter_pipe()
         status_read, status_write = os.pipe()
@@ -497,6 +520,9 @@ def run_sandboxed(
                 command=argv,
                 seccomp_fd=seccomp_fd,
                 status_fd=status_write,
+                proxy_socket_path=proxy_socket_path,
+                bridge_script_path=bridge_script_path,
+                policy=policy,
             )
             process = subprocess.Popen(
                 run_args,
@@ -543,7 +569,9 @@ def run_sandboxed(
                             "seccomp_filter": "architecture_checked_denylist",
                             "workspace_copy": "read_write_private_copy",
                             "git_metadata": "read_only",
-                            "network": "isolated_no_external_network",
+                            "network": "private_net_namespace_plus_host_policy_proxy",
+                            "policy_id": proxy_policy.policy_id,
+                            "proxy_socket": "mounted_unix_socket",
                             "environment": "cleared_and_minimal",
                         },
                     )
@@ -601,6 +629,13 @@ def run_sandboxed(
             )
         exit_code = int(ExitCodeForSandbox.FAILURE)
     finally:
+        if proxy_server is not None:
+            try:
+                proxy_server.stop()
+            except (OSError, RuntimeError, TimeoutError):
+                pass
+        if proxy_directory is not None:
+            shutil.rmtree(proxy_directory, ignore_errors=True)
         logger.log_event(
             AuditEventType.SESSION_END,
             {
