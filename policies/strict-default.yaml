@@ -1,0 +1,81 @@
+schema_version: "1.0"
+policy_id: "strict-local-dev"
+description: "Fail-closed default policy for local AI coding agent sessions."
+workspace_root: "/workspace"
+default_decision: "deny"
+
+filesystem:
+  deny:
+    - id: "deny-dotenv-secrets"
+      operations: ["read", "write", "delete", "execute"]
+      paths:
+        - "**/.env"
+        - "**/.env.*"
+        - "**/*.pem"
+        - "**/*.key"
+      reason: "Protect environment secrets and private keys inside workspace."
+    - id: "deny-git-hooks-persistence"
+      operations: ["write", "delete", "execute"]
+      paths:
+        - ".git/hooks/**"
+        - ".git/config"
+      reason: "Prevent sandbox escape or persistence via host git hooks and config."
+  require_approval:
+    - id: "approve-ci-workflow-edits"
+      operations: ["write", "delete"]
+      paths:
+        - ".github/workflows/**"
+        - "pyproject.toml"
+      reason: "Modifying CI workflows or build dependencies requires human approval."
+    - id: "approve-workspace-file-delete"
+      operations: ["delete"]
+      paths:
+        - "/workspace/**"
+      reason: "Deleting workspace files requires explicit human approval."
+  allow:
+    - id: "allow-workspace-read-write"
+      operations: ["read", "write"]
+      paths:
+        - "/workspace/**"
+      reason: "Permit reading and editing regular source files inside the workspace."
+
+commands:
+  deny:
+    - id: "deny-privilege-escalation-and-raw-net"
+      executables: ["sudo", "su", "pkexec", "nc", "ncat", "socat", "mount", "umount"]
+      reason: "Privilege escalation and raw socket utilities are strictly prohibited."
+    - id: "deny-destructive-git-push-force"
+      executables: ["git"]
+      arg_patterns: ["*push*--force*", "*push*-f*"]
+      reason: "Force-pushing git history is prohibited."
+  require_approval:
+    - id: "approve-git-push-and-reset"
+      executables: ["git"]
+      arg_patterns: ["push*", "reset*--hard*"]
+      reason: "Pushing commits or hard-resetting the repository requires human approval."
+    - id: "approve-package-installs"
+      executables: ["pip", "pip3", "uv", "npm", "pnpm"]
+      arg_patterns: ["install*", "add*"]
+      reason: "Installing external packages requires human approval."
+  allow:
+    - id: "allow-safe-dev-test-tools"
+      executables: ["pytest", "ruff", "mypy", "git"]
+      arg_patterns: ["status*", "diff*", "log*", "-v*", "--version*"]
+      reason: "Permit standard read-only git inspection and local test runners."
+
+network:
+  deny:
+    - id: "deny-metadata-and-localhost"
+      hosts: ["169.254.169.254", "localhost", "127.*"]
+      ports: [80, 443, 8080, 22, 5432, 6379]
+      reason: "Block cloud metadata service and host loopback services."
+  require_approval:
+    - id: "approve-package-registries"
+      hosts: ["pypi.org", "files.pythonhosted.org"]
+      ports: [443]
+      reason: "Connecting to package registries requires human approval."
+  allow:
+    - id: "allow-llm-inference-apis"
+      hosts: ["api.anthropic.com", "generativelanguage.googleapis.com"]
+      ports: [443]
+      reason: "Allow outbound HTTPS to configured LLM API endpoints."
