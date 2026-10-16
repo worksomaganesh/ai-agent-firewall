@@ -404,7 +404,7 @@ def discard_workspace_copy_cmd(
         if not root.is_dir() or not (root / "session-summary.json").is_file() or not (root / "audit.jsonl").is_file():
             raise ValueError("Refusing: path is not a recognized agent-boundary session directory")
         workspace_copy = root / "workspace"
-        metadata = workspace_copy.lstat()
+        workspace_copy.lstat()
         if workspace_copy.is_symlink() or not workspace_copy.is_dir() or workspace_copy.resolve(strict=True).parent != root:
             raise ValueError("Refusing: workspace copy is not a direct, non-symlink child of the session directory")
         shutil.rmtree(workspace_copy)
