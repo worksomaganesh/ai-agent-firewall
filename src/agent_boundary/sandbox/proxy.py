@@ -213,29 +213,61 @@ class PolicyEnforcingProxy:
 
     def _authorize(self, host: str, port: int) -> _Access:
         target = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
-        result = self.engine.evaluate(ActionRequest(category="network", operation="connect", target=target))
-        if result.decision is not Decision.ALLOW:
-            reason = (
-                "Policy requires human approval but no Phase 3 approval broker exists; denied fail-closed"
-                if result.decision is Decision.REQUIRE_APPROVAL else result.reason
-            )
-            return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, reason)
+        request = ActionRequest(category="network", operation="connect", target=target)
+        result = self.engine.evaluate(request)
+        if result.decision is Decision.DENY:
+            return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, result.reason)
         if self._local_name(host):
             return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Local and metadata destinations are denied")
+
+        grant: ApprovalGrant | None = None
+        if result.decision is Decision.REQUIRE_APPROVAL:
+            grant = self.approval_broker.request_network(host, port, result.matched_rule_id, result.reason)
+            if grant is None:
+                return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Human approval was not granted; denied fail-closed")
+
         try:
             addresses = self._resolve(host, port)
         except (OSError, ValueError):
+            if grant is not None:
+                self.approval_broker.revoke(grant)
             return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Destination DNS resolution failed")
         if not addresses:
+            if grant is not None:
+                self.approval_broker.revoke(grant)
             return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Destination resolved to no addresses")
         for address in addresses:
             try:
                 resolved_ip = ipaddress.ip_address(str(address[4][0]).split("%", 1)[0])
             except (IndexError, TypeError, ValueError):
+                if grant is not None:
+                    self.approval_broker.revoke(grant)
                 return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Resolver returned an invalid address")
             if not resolved_ip.is_global or resolved_ip.is_multicast or resolved_ip.is_unspecified:
+                if grant is not None:
+                    self.approval_broker.revoke(grant)
                 return _Access(host, port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "A resolved address is not globally routable; private/loopback/link-local access is denied")
-        return _Access(host, port, result.decision.value, Decision.ALLOW.value, result.matched_rule_id, result.reason, tuple(addresses))
+        return _Access(host, port, result.decision.value, Decision.ALLOW.value, result.matched_rule_id, result.reason, tuple(addresses), grant)
+
+    def _revalidate_before_connect(self, access: _Access) -> _Access:
+        """Re-evaluate the exact request immediately before the upstream socket opens."""
+        target = f"[{access.host}]:{access.port}" if ":" in access.host else f"{access.host}:{access.port}"
+        result = self.engine.evaluate(ActionRequest(category="network", operation="connect", target=target))
+        expected = Decision.REQUIRE_APPROVAL if access.approval_grant is not None else Decision.ALLOW
+        if result.decision is not expected or result.matched_rule_id != access.matched_rule_id:
+            if access.approval_grant is not None:
+                self.approval_broker.revoke(access.approval_grant)
+            return _Access(access.host, access.port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Policy decision or matching rule changed before connection")
+        if access.approval_grant is not None:
+            consumed = self.approval_broker.consume(
+                access.approval_grant, "network.connect", target, result.matched_rule_id
+            )
+            if not consumed:
+                return _Access(access.host, access.port, result.decision.value, Decision.DENY.value, result.matched_rule_id, "Approval expired, was already used, or did not match this exact action")
+        return _Access(
+            access.host, access.port, result.decision.value, Decision.ALLOW.value,
+            result.matched_rule_id, result.reason, access.addresses,
+        )
 
     def _audit_access(self, method: str, access: _Access) -> None:
         self.audit_logger.log_event(AuditEventType.NETWORK_REQUEST, {
@@ -381,6 +413,8 @@ class PolicyEnforcingProxy:
                 rewritten = (f"{method} {path} {version}\r\n" + "".join(f"{n}: {v}\r\n" for n, v in forwarded) + "\r\n").encode("iso-8859-1")
 
             access = self._authorize(host, port)
+            if access.allowed:
+                access = self._revalidate_before_connect(access)
             self._audit_access(method, access)
             if not access.allowed:
                 self._send_error(client, 403, "Forbidden", "Blocked by agent-boundary network policy")
