@@ -12,6 +12,7 @@ from agent_boundary.audit.verifier import verify_audit_log
 from agent_boundary.policy.parser import load_policy
 from agent_boundary.policy.schema import Decision, NetworkPolicySection, NetworkRule, PolicyDocument
 from agent_boundary.sandbox.proxy import PolicyEnforcingProxy
+from agent_boundary.sandbox.approval import ApprovalBroker
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -180,4 +181,73 @@ def test_allowlisted_host_resolving_to_private_ip_is_denied(tmp_path: Path) -> N
     event = next(row for row in rows if row["event_type"] == "NETWORK_REQUEST")
     assert event["payload"]["policy_decision"] == "allow"
     assert event["payload"]["enforced_decision"] == "deny"
+    assert verify_audit_log(audit).valid
+
+
+
+def test_required_approval_is_prompted_consumed_and_audited(tmp_path: Path) -> None:
+    policy = PolicyDocument(
+        schema_version="1.0",
+        policy_id="proxy-approval-test",
+        description="Require exact human approval for package index",
+        workspace_root="/workspace",
+        default_decision=Decision.DENY,
+        network=NetworkPolicySection(
+            require_approval=[
+                NetworkRule(
+                    id="approve-pypi",
+                    hosts=["pypi.org"],
+                    ports=[443],
+                    reason="Package index access needs explicit approval",
+                )
+            ]
+        ),
+    )
+    audit = tmp_path / "audit.jsonl"
+    logger = AuditLogger(audit, "proxy-approval-test", EnforcementMode.OS_ENFORCED_BWRAP)
+    prompts: list[str] = []
+    broker = ApprovalBroker(
+        logger,
+        ttl_seconds=10,
+        tty_reader=lambda prompt, _timeout: (
+            prompts.append(prompt) or "APPROVE pypi.org:443"
+        ),
+    )
+    connector_called = False
+
+    def connector(_address: tuple) -> socket.socket:
+        nonlocal connector_called
+        connector_called = True
+        raise OSError("expected mocked upstream failure")
+
+    proxy = PolicyEnforcingProxy(
+        tmp_path / "private" / "proxy.sock",
+        policy,
+        logger,
+        resolver=lambda _host, port: [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", port))
+        ],
+        connector=connector,
+        approval_broker=broker,
+    )
+    proxy.start()
+    try:
+        client, response = request(
+            proxy,
+            b"CONNECT pypi.org:443 HTTP/1.1\r\nHost: pypi.org:443\r\n\r\n",
+        )
+        client.close()
+    finally:
+        proxy.stop()
+
+    assert prompts and "host terminal" in prompts[0]
+    assert connector_called
+    assert response.startswith(b"HTTP/1.1 502 Bad Gateway")
+    rows = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    types = [row["event_type"] for row in rows]
+    assert AuditEventType.APPROVAL_GRANTED.value in types
+    assert AuditEventType.APPROVAL_CONSUMED.value in types
+    network_event = next(row for row in rows if row["event_type"] == "NETWORK_REQUEST")
+    assert network_event["payload"]["policy_decision"] == "require_approval"
+    assert network_event["payload"]["enforced_decision"] == "allow"
     assert verify_audit_log(audit).valid
