@@ -46,14 +46,19 @@ def generate_session_report(session_dir: Path) -> str:
                 f"`{p.get('enforced_by')}` |"
             )
 
-    banner = (
-        "> **[SIMULATION MODE — NO OS ENFORCEMENT]**\n"
-        "> This session executed in **Phase 1 Policy Simulation Mode**. Policy decisions were "
-        "evaluated deterministically and recorded to the hash-chained audit log, but **no Linux "
-        "kernel namespace, Bubblewrap mount, Seccomp-BPF filter, or network proxy was active**."
-        if mode is EnforcementMode.SIMULATION
-        else "> **[OS ENFORCEMENT ACTIVE — BUBBLEWRAP SANDBOX]**"
-    )
+    sandbox_started = any(rec.event_type is AuditEventType.SANDBOX_STARTED for rec in records)
+    if mode is EnforcementMode.SIMULATION:
+        banner = (
+            "> **[SIMULATION MODE — NO OS ENFORCEMENT]**\n"
+            "> This session evaluated policy logic only; no OS isolation was active."
+        )
+    elif sandbox_started:
+        banner = "> **[OS SANDBOX CHILD STARTED — BUBBLEWRAP]**"
+    else:
+        banner = (
+            "> **[SANDBOX NOT STARTED — TARGET COMMAND NOT RUN]**\n"
+            "> Preflight or setup failed. Do not treat this attempt as protected execution."
+        )
 
     integrity_status = "PASSED" if verification.valid else "FAILED (TAMPERED OR CORRUPTED)"
     table_body = "\n".join(action_rows) if action_rows else "| - | - | - | - | - | - | - |"

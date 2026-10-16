@@ -17,6 +17,7 @@ from agent_boundary.policy.engine import ActionRequest, PolicyEngine
 from agent_boundary.policy.parser import PolicyValidationError, load_policy
 from agent_boundary.policy.schema import Decision
 from agent_boundary.simulator import load_scenario, run_simulation
+from agent_boundary.sandbox.bwrap import ResourceLimits, SandboxError, run_sandboxed
 
 app = typer.Typer(
     name="agent-boundary",
@@ -199,6 +200,73 @@ def simulate_cmd(
         for mismatch in summary.expectation_mismatches:
             console.print(f"  - {mismatch}")
         raise typer.Exit(code=int(ExitCode.POLICY_DENIED))
+
+@app.command("run", context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def run_sandbox_cmd(
+    ctx: typer.Context,
+    workspace: Annotated[
+        Path, typer.Option("--workspace", "-w", help="Source project directory to copy into the sandbox.")
+    ],
+    output_root: Annotated[
+        Path | None,
+        typer.Option("--output-root", help="Parent directory for private session artifacts; must be outside the workspace."),
+    ] = None,
+    timeout: Annotated[int, typer.Option("--timeout", min=1, max=86400, help="Wall-clock timeout in seconds.")] = 600,
+    cpu_seconds: Annotated[int, typer.Option("--cpu-seconds", min=1, max=86400, help="Per-process CPU time limit.")] = 600,
+    memory_mib: Annotated[int, typer.Option("--memory-mib", min=256, max=65536, help="Virtual address-space limit in MiB.")] = 4096,
+    file_size_mib: Annotated[int, typer.Option("--file-size-mib", min=1, max=4096, help="Maximum size of a single output file in MiB.")] = 512,
+    open_files: Annotated[int, typer.Option("--open-files", min=64, max=65536, help="Open file descriptor limit per process.")] = 1024,
+) -> None:
+    """Run a command inside a real Linux Bubblewrap sandbox with networking disabled.
+
+    Put the child command after --, for example: run --workspace ./project -- /bin/sh -c 'id; pwd'.
+    The project is copied into a private session directory. Changes are not copied back automatically.
+    """
+    command = list(ctx.args)
+    if command and command[0] == "--":
+        command = command[1:]
+    if not command:
+        console.print("[bold red]ERROR:[/bold red] Supply the command after --.")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR))
+
+    try:
+        result = run_sandboxed(
+            workspace=workspace,
+            command=command,
+            output_root=output_root,
+            limits=ResourceLimits(
+                timeout_seconds=timeout,
+                cpu_seconds=cpu_seconds,
+                memory_mib=memory_mib,
+                file_size_mib=file_size_mib,
+                open_files=open_files,
+            ),
+        )
+    except (OSError, ValueError, SandboxError) as exc:
+        console.print(f"[bold red]SANDBOX SETUP FAILED:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.SANDBOX_FAILURE)) from exc
+
+    if result.sandbox_started:
+        console.print("\n[bold green][BUBBLEWRAP SANDBOX CHILD STARTED][/bold green]")
+        console.print("Outbound network is disabled; host environment variables are not passed through.")
+        console.print("The source workspace was not modified. Review the staged copy to inspect changes.")
+    else:
+        console.print("\n[bold red][SANDBOX NOT STARTED — TARGET COMMAND NOT RUN][/bold red]")
+        if result.error:
+            console.print(result.error)
+
+    console.print(f"Session: {result.session_id}")
+    console.print(f"Evidence directory: {result.session_dir}")
+    console.print(f"Report: {result.session_dir / 'session_report.md'}")
+    console.print(f"Audit log: {result.session_dir / 'audit.jsonl'}")
+    console.print(f"Audit head hash: {result.audit_head_hash}")
+    if result.workspace_copy is not None:
+        console.print(f"Private workspace copy: {result.workspace_copy}")
+        console.print(f"Pre-existing secret-like paths omitted: {result.omitted_secrets}")
+        console.print(f"Changed staged paths: {sum(len(result.changes[k]) for k in ('added', 'modified', 'deleted'))}")
+    if result.error:
+        console.print(f"[yellow]Notice:[/yellow] {result.error}")
+    raise typer.Exit(code=result.exit_code)
 
 
 @app.command("verify-audit")

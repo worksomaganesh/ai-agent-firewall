@@ -62,4 +62,16 @@ pytest
 ## Current guarantees and limitations
 The policy engine implements deny-overrides-approval-overrides-allow precedence and a default-deny fallback for unmatched actions. Audit hash chaining makes many modifications detectable, but strong post-run tamper evidence requires a trusted expected head hash or HMAC key. Simulation logs show what the policy engine decided; they are **not evidence that an operating-system control blocked an action**.
 
-Real filesystem isolation, network enforcement, syscall filtering, resource limits, mediated approvals, and adversarial enforcement tests are later milestones and are not implemented by this Phase 1 bundle.
+## Phase 2: Linux Bubblewrap runner (initial increment)
+
+The Linux-only run command executes a command in a Bubblewrap user/PID/network/IPC/UTS namespace, applies an architecture-checked Seccomp-BPF denylist and process resource limits, and provides only read-only system executable/library paths plus a sanitized private project copy. Existing .env-like files, common key/credential files, Git hooks, Git remotes/configuration, and nested Git metadata are omitted or sanitized in that copy. Existing Git metadata and GitHub Actions workflows are mounted read-only. Host environment variables are cleared; outbound networking is disabled entirely. The original workspace is not modified: inspect the retained copy and diff in the session directory, then manually apply changes you want to keep.
+
+Bubblewrap 0.12.0 or newer is required. The runner checks for a root-owned, non-writable, non-setuid binary in a trusted system directory and runs a preflight sandbox probe. If a required namespace or seccomp filter cannot be installed, the target command is not launched. The conservative version check may reject distribution packages that backport fixes while reporting an upstream version below 0.12.0.
+
+Example on Linux after installing the package and a trusted Bubblewrap >= 0.12.0:
+
+    agent-boundary run --workspace ./my-project -- /bin/sh -c 'pwd; ls -la'
+
+Session artifacts are written under ~/.local/state/agent-boundary/runs by default. You can choose an alternative parent with --output-root, but it must be outside the source workspace. A run creates an audit.jsonl hash chain, session_report.md, before/after manifests, diff.json, and a retained workspace copy.
+
+Phase 2 limitation: this first increment intentionally has no outbound proxy, no per-action live policy mediation, no interactive approval broker, and no cgroup-based limits. Coding agents that require an external LLM API cannot connect while networking is disabled. Read-only mounts plus staging protect the original project from direct writes, but this does not yet establish a complete agent firewall or prevent all data from being copied out through manually applied staged changes. This project is a security prototype, not a substitute for a reviewed isolation platform.

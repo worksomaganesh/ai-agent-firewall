@@ -21,6 +21,18 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Bubblewrap build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential meson ninja-build pkg-config libcap-dev
+      - name: Build the patched upstream Bubblewrap release
+        run: |
+          git clone --depth 1 --branch v0.12.0 https://github.com/containers/bubblewrap.git "$RUNNER_TEMP/bubblewrap"
+          meson setup "$RUNNER_TEMP/bubblewrap/build" "$RUNNER_TEMP/bubblewrap" --prefix=/usr/local
+          meson compile -C "$RUNNER_TEMP/bubblewrap/build"
+          sudo meson install -C "$RUNNER_TEMP/bubblewrap/build"
+      - name: Enable user namespaces for this ephemeral runner when supported
+        run: |
+          if test -e /proc/sys/kernel/unprivileged_userns_clone; then sudo sysctl -w kernel.unprivileged_userns_clone=1 || true; fi
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true; fi
       - name: Install package and test dependencies
         run: python -m pip install -e ".[dev]"
       - name: Run Phase 1 acceptance and regression tests
