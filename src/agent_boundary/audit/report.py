@@ -50,7 +50,7 @@ def generate_session_report(session_dir: Path) -> str:
     if mode is EnforcementMode.SIMULATION:
         banner = (
             "> **[SIMULATION MODE — NO OS ENFORCEMENT]**\n"
-            "> This session evaluated policy logic only; no OS isolation was active."
+            "> This session evaluated policy logic only; no OS isolation was active: no Linux kernel namespace, Bubblewrap mount, Seccomp-BPF filter, or other kernel-enforced boundary was applied."
         )
     elif sandbox_started:
         banner = "> **[OS SANDBOX CHILD STARTED — BUBBLEWRAP]**"
