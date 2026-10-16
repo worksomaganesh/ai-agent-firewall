@@ -158,8 +158,15 @@ class GuardedWorkspaceTools:
             try:
                 if expected[0] != "missing":
                     before = os.fstat(fd)
-                    if self._fingerprint(current) != expected[0]:
-                        raise RuntimeError("File changed while opening for write")
+                    expected_parts = expected[0].split(":")
+                    if (
+                        len(expected_parts) < 6
+                        or str(before.st_dev) != expected_parts[0]
+                        or str(before.st_ino) != expected_parts[1]
+                        or str(before.st_mode) != expected_parts[2]
+                        or self._fingerprint(current) != expected[0]
+                    ):
+                        raise RuntimeError("File identity changed while opening for write")
                     digest = hashlib.sha256()
                     while True:
                         chunk = os.read(fd, 1024 * 1024)
