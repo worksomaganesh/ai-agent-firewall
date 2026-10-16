@@ -37,6 +37,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --strict-markers"
+markers = [
+    "sandbox: tests that require an available and usable Linux Bubblewrap sandbox",
+]
 
 [tool.mypy]
 python_version = "3.11"
