@@ -200,7 +200,7 @@ def test_real_bubblewrap_isolation_and_source_workspace_preservation(tmp_path: P
     (source / "app.py").write_text("before\n", encoding="utf-8")
     proof_file = "phase2-proof.json"
     script = (
-        import json, pathlib, socket, resource; 
+        "import json, pathlib, socket, resource; "
         "ws=pathlib.Path('/workspace'); "
         "e={'dotenv_absent': not (ws/'.env').exists(), "
         "'host_source_path_absent': not pathlib.Path(" + repr(str(source.resolve())) + ").exists(), "
