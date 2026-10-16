@@ -214,12 +214,13 @@ def run_sandbox_cmd(
     timeout: Annotated[int, typer.Option("--timeout", min=1, max=86400, help="Wall-clock timeout in seconds.")] = 600,
     cpu_seconds: Annotated[int, typer.Option("--cpu-seconds", min=1, max=86400, help="Per-process CPU time limit.")] = 600,
     memory_mib: Annotated[int, typer.Option("--memory-mib", min=256, max=65536, help="Virtual address-space limit in MiB.")] = 4096,
+    policy_path: Annotated[Path | None, typer.Option("--policy", "-p", help="Validated YAML policy for filesystem and network decisions.")] = None,
     file_size_mib: Annotated[int, typer.Option("--file-size-mib", min=1, max=4096, help="Maximum size of a single output file in MiB.")] = 512,
     open_files: Annotated[int, typer.Option("--open-files", min=64, max=65536, help="Open file descriptor limit per process.")] = 1024,
 ) -> None:
-    """Run a command inside a real Linux Bubblewrap sandbox with networking disabled.
+    """Run a command inside Bubblewrap with live HTTP/HTTPS network policy enforcement.
 
-    Put the child command after --, for example: run --workspace ./project -- /bin/sh -c 'id; pwd'.
+    Put the child command after --, for example: run --workspace ./project --policy policies/strict-default.yaml -- /bin/sh -c 'id; pwd'.
     The project is copied into a private session directory. Changes are not copied back automatically.
     """
     command = list(ctx.args)
@@ -229,11 +230,24 @@ def run_sandbox_cmd(
         console.print("[bold red]ERROR:[/bold red] Supply the command after --.")
         raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR))
 
+    if policy_path is None:
+        candidate = Path(__file__).resolve().parents[2] / "policies" / "strict-default.yaml"
+        policy_path = candidate if candidate.is_file() else None
+    if policy_path is None:
+        console.print("[bold red]POLICY REQUIRED:[/bold red] pass --policy policies/strict-default.yaml")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR))
+    try:
+        policy_doc = load_policy(policy_path)
+    except PolicyValidationError as exc:
+        console.print(f"[bold red]POLICY ERROR:[/bold red] {exc}")
+        raise typer.Exit(code=int(ExitCode.CONFIG_OR_POLICY_ERROR)) from exc
+
     try:
         result = run_sandboxed(
             workspace=workspace,
             command=command,
             output_root=output_root,
+            policy=policy_doc,
             limits=ResourceLimits(
                 timeout_seconds=timeout,
                 cpu_seconds=cpu_seconds,
@@ -248,7 +262,7 @@ def run_sandbox_cmd(
 
     if result.sandbox_started:
         console.print("\n[bold green][BUBBLEWRAP SANDBOX CHILD STARTED][/bold green]")
-        console.print("Outbound network is disabled; host environment variables are not passed through.")
+        console.print("Direct sockets are blocked; HTTP/HTTPS destinations are mediated by the host policy proxy.")
         console.print("The source workspace was not modified. Review the staged copy to inspect changes.")
     else:
         console.print("\n[bold red][SANDBOX NOT STARTED — TARGET COMMAND NOT RUN][/bold red]")
