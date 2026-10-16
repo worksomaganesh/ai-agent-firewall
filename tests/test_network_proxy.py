@@ -6,7 +6,7 @@ import socket
 import threading
 from pathlib import Path
 
-from agent_boundary.audit.events import EnforcementMode
+from agent_boundary.audit.events import AuditEventType, EnforcementMode
 from agent_boundary.audit.logger import AuditLogger
 from agent_boundary.audit.verifier import verify_audit_log
 from agent_boundary.policy.parser import load_policy
