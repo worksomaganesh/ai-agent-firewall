@@ -276,7 +276,7 @@ class PolicyEnforcingProxy:
             "enforced_decision": access.enforced_decision, "matched_rule_id": access.matched_rule_id,
             "reason": access.reason[:400],
             "upstream_addresses": sorted({str(a[4][0]) for a in access.addresses}) if access.allowed else [],
-            "approval_supported": False, "request_path_logged": False,
+            "approval_supported": True, "approval_used": access.policy_decision == Decision.REQUIRE_APPROVAL.value, "request_path_logged": False,
         })
 
     def _connect_one(self, address: tuple) -> socket.socket:
