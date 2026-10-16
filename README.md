@@ -16,10 +16,10 @@ The roadmap contains **5 phases total: Phase 0 plus implementation Phases 1–4*
 | **0 — Architecture and threat model** | Establish assets, trust boundaries, requirements, risks, and architecture | **Complete** | Linux-first design, threat scenarios, backend selection, acceptance criteria |
 | **1 — Reliable core** | Build the policy/control plane and audit foundation | **Complete against the current acceptance suite** | Strict YAML schema, deterministic policy engine, simulation, JSONL hash-chain audit, verifier, reports, regression tests and CI |
 | **2 — OS isolation and live network policy** | Run commands in a Linux sandbox with static filesystem protections, resource caps, network mediation, audit evidence and diffs | **Complete — latest Linux CI passed** | Bubblewrap namespaces, Seccomp-BPF, rlimits, fail-closed preflight, private workspace copy, host UNIX-socket policy proxy, guest loopback bridge, live network decisions, audit/report integration and enforcement tests |
-| **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **Not started** | Host TTY approval broker, expiring action-bound approvals, target revalidation, safer restore/review flow and guarded tool integrations |
+| **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **In progress — approval broker and review/discard commands implemented; full CI validation pending** | Host TTY approval broker, one-use expiring network approvals, policy revalidation before connect, session review and evidence-preserving staged-copy discard; broader guarded tool integrations remain planned |
 | **4 — Adversarial evaluation and release** | Validate the threat model and prepare a responsible release | **Not started** | Adversarial fixtures, supported-Linux CI matrix, static/type checks, independent review, reproducible demos, release packaging and documented residual risks |
 
-**How much is done?** Phases 0, 1 and 2 are complete: **3 of 5 roadmap phases (60% by phase count)**. That is not a claim that 60% of total engineering effort is finished; the remaining phases include approvals, recovery, wider adversarial evaluation and release hardening. The latest Linux CI run passed **26 tests**, including the real Bubblewrap isolation and guest-to-host proxy bridge test. Phases 3 and 4 have not started. The project is not production-ready.
+**How much is done?** Phases 0, 1 and 2 are complete: **3 of 5 roadmap phases (60% by phase count)**. Phase 3 is now underway; its approval and session-review implementation is committed, and its latest full CI validation is pending. That is not a claim that 60% of total engineering effort is finished; the remaining phases include approvals, recovery, wider adversarial evaluation and release hardening. The latest Linux CI run passed **26 tests**, including the real Bubblewrap isolation and guest-to-host proxy bridge test. Phases 3 and 4 have not started. The project is not production-ready.
 
 Check the [successful Linux CI run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38911615189) and the [full Actions history](https://github.com/worksomaganesh/ai-agent-firewall/actions).
 
@@ -96,8 +96,18 @@ The command runs against a **private staged copy**. Changes are not automaticall
 - The proxy evaluates the destination host and port on each HTTP request or HTTPS CONNECT before opening an upstream socket.
 - A hostname is resolved on the host only after policy allows it. Non-global, private, loopback, link-local, reserved and metadata-style destinations are denied. The connection is made to the checked address to reduce DNS-rebinding risk.
 - HTTPS CONNECT is a tunnel. The proxy does **not** decrypt TLS or inspect encrypted request paths, bodies or prompt contents.
-- Network require-approval rules are denied until Phase 3 adds a real interactive approval broker. They are not silently auto-approved.
+- Network require-approval rules trigger a host-terminal prompt. The approval is bound to one exact host:port and policy rule, expires quickly, can be used once, and is revalidated immediately before the upstream connection. Missing TTY, timeout, refusal, expiry or scope mismatch fails closed.
 - Direct socket bypass attempts fail before reaching the proxy and therefore may not create an individual network-request audit event.
+
+#### Review and clean up a completed session
+
+~~~bash
+agent-boundary review-session ~/.local/state/agent-boundary/runs/ab-run-SESSIONID
+agent-boundary verify-audit ~/.local/state/agent-boundary/runs/ab-run-SESSIONID/audit.jsonl
+agent-boundary discard-workspace-copy ~/.local/state/agent-boundary/runs/ab-run-SESSIONID --yes
+~~~
+
+`review-session` lists changed paths without printing file contents. `discard-workspace-copy --yes` removes only that session's staged workspace copy; it preserves the audit log, report, diff, manifests and summary. There is no automatic write-back to the original project.
 
 #### Resource limits and fail-closed startup
 
@@ -105,12 +115,13 @@ The runner applies per-process Linux rlimits for CPU time, address-space memory,
 
 The requested command should not start when preflight or sandbox setup fails. Session reports distinguish a sandbox child that started from a setup failure. If Bubblewrap is absent, too old, untrusted or blocked by kernel policy, fix the host configuration rather than falling back to unsandboxed execution.
 
-### Phase 3 — Approvals and recovery (planned)
+### Phase 3 — Approvals and recovery (in progress)
 
-- Host-side approval prompts reading from a dedicated host terminal, not agent-controlled stdin.
-- Expiring approvals bound to a specific action and target, with target-state revalidation immediately before execution.
-- Guarded command/tool integrations for operations that can be mediated in user space.
-- Human review and recovery support for changes in the private workspace copy.
+- **Implemented:** host-side approval prompts reading from `/dev/tty`, not agent-controlled stdin; missing TTY and unexpected answers deny.
+- **Implemented:** one-use, short-lived network approvals bound to the exact `network.connect` action, host:port and matching policy rule; policy is re-evaluated immediately before the outbound connection.
+- **Implemented:** audit events for approval requested, granted, denied, expired and consumed; tests cover exact scope, expiry, one-use behavior and live proxy integration.
+- **Implemented:** `review-session` lists staged changed paths and `discard-workspace-copy --yes` safely discards only the isolated copy while preserving audit evidence.
+- **Remaining:** guarded command/tool integrations for filesystem and process actions, broader recovery/backup mechanisms, adversarial review and full CI validation.
 - Clear separation in logs and reports between kernel-enforced controls, proxy decisions, policy evaluations and unobserved activity.
 
 ### Phase 4 — Adversarial evaluation and release (planned)
@@ -128,7 +139,7 @@ Run the suite locally:
 python -m pytest --cov=agent_boundary --cov-report=term-missing
 ~~~
 
-Tests cover policy schema and precedence, audit integrity, fail-closed startup, resource-limit validation, proxy allow/deny decisions, require-approval denial without a broker, private-address rejection, workspace staging/diff evidence, and a real Bubblewrap enforcement test where the host permits it.
+Tests cover policy schema and precedence, audit integrity, fail-closed startup, resource-limit validation, proxy allow/deny decisions, require-approval denial without an interactive terminal and explicit approval, private-address rejection, workspace staging/diff evidence, and a real Bubblewrap enforcement test where the host permits it.
 
 A real sandbox test may be skipped when Bubblewrap is missing or unprivileged namespaces are unavailable. A skipped enforcement test is **not** evidence that the security boundary works. Review the current CI run and logs.
 
