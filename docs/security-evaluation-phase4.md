@@ -8,10 +8,10 @@ This document records the current security validation strategy for agent-boundar
 
 | Area | Adversarial cases | Evidence / test location | Boundary still to validate |
 |---|---|---|---|
-| Policy engine | Unknown operations, unmatched targets, deny-overrides-allow, path traversal | tests/test_phase1_acceptance.py, tests/test_phase1_regressions.py | Fuzz policy schema and normalization combinations |
-| Proxy authority parsing | Userinfo, invalid ports, fragments, path suffixes, malformed and single-label names, invalid labels | tests/test_phase4_adversarial.py | Property-based fuzzing and differential HTTP parser testing |
+| Policy engine | Unknown operations, unmatched targets, deny-overrides-allow, path traversal | tests/test_phase1_acceptance.py, tests/test_phase1_regressions.py | Property-based malformed-authority, host-normalization, and path-normalization tests run in CI |
+| Proxy authority parsing | Userinfo, invalid ports, fragments, path suffixes, malformed and single-label names, invalid labels | tests/test_phase4_adversarial.py | 500-example Hypothesis authority and header-input runs per CI job; differential HTTP parser testing remains future work |
 | HTTP request framing | Duplicate Content-Length, Transfer-Encoding, CL+TE, folded headers, invalid header names, oversized header blocks | tests/test_phase4_adversarial.py | Add property-based mutation corpus; keep unsupported framing denied |
-| DNS and routing | Unmatched host, private/loopback result, multiple resolved addresses | tests/test_network_proxy.py, tests/test_phase4_adversarial.py | IPv4-mapped IPv6 / unusual resolver record matrix |
+| DNS and routing | Unmatched host, private/loopback result, multiple resolved addresses | tests/test_network_proxy.py, tests/test_phase4_adversarial.py | IPv4-mapped IPv6 and mixed public/private DNS answers have explicit regression tests; unusual resolver records remain future work |
 | Approval security | Wrong answer, missing broker, expiry, reuse, target/rule mismatch, target replacement during approval | tests/test_approval.py, tests/test_guarded_action_gate.py, tests/test_guarded_workspace_tools.py | TTY behavior on supported terminals and high-concurrency stress |
 | Filesystem adapter | Secret denial, traversal, symlink rejection, target fingerprint changes, safe file operations | tests/test_guarded_workspace_tools.py | Directory-fd/openat2 hardening and filesystem race stress |
 | Workspace recovery | Export traversal, symlink source, no-overwrite, evidence-preserving discard | tests/test_phase3_workflows.py | Recovery from disk-full, power loss, and interrupted copies |
@@ -45,3 +45,10 @@ Do not call this a production release until all items are addressed:
 - [ ] Perform a threat-model review against the current code, not just the blueprint.
 - [ ] Obtain an independent security review.
 - [ ] Publish a release checklist, support matrix, known limitations and reproducible test evidence.
+
+
+## Automated release-gate status
+
+The Phase 4 CI workflow runs acceptance and sandbox-enforcement tests on Ubuntu 22.04 and Ubuntu 24.04, plus repository-wide Ruff checks, selected strict typing, CLI smoke tests, source/wheel builds, metadata validation, and clean virtual-environment installs of both artifacts outside the checkout. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
+
+**Release status:** the automated gate is considered passed only when all matrix jobs on the current commit are green. Independent security review, broader kernel/runtime combinations, long-running stress/fuzz campaigns, and formal production threat-model sign-off are not automated and remain outstanding. This repository must continue to be described as an educational prototype.

@@ -251,3 +251,65 @@ def test_required_approval_is_prompted_consumed_and_audited(tmp_path: Path) -> N
     assert network_event["payload"]["policy_decision"] == "require_approval"
     assert network_event["payload"]["enforced_decision"] == "allow"
     assert verify_audit_log(audit).valid
+
+
+def test_mixed_public_and_private_dns_answers_are_denied(tmp_path: Path) -> None:
+    policy = policy_allowing_example()
+    audit = tmp_path / "audit.jsonl"
+    logger = AuditLogger(audit, "mixed-dns-test", EnforcementMode.OS_ENFORCED_BWRAP)
+    connector_called = False
+
+    def connector(_address: tuple) -> socket.socket:
+        nonlocal connector_called
+        connector_called = True
+        raise AssertionError("Must not connect when any DNS answer is private")
+
+    proxy = PolicyEnforcingProxy(
+        tmp_path / "private" / "proxy.sock", policy, logger,
+        resolver=lambda _host, port: [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("93.184.216.34", port)),
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("10.0.0.8", port)),
+        ],
+        connector=connector,
+    )
+    proxy.start()
+    try:
+        client, response = request(proxy, b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
+        client.close()
+        assert response.startswith(b"HTTP/1.1 403 Forbidden")
+    finally:
+        proxy.stop()
+    assert not connector_called
+    records = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
+    event = next(row for row in records if row["event_type"] == "NETWORK_REQUEST")
+    assert event["payload"]["enforced_decision"] == "deny"
+    assert verify_audit_log(audit).valid
+
+
+def test_ipv4_mapped_ipv6_loopback_dns_answer_is_denied(tmp_path: Path) -> None:
+    policy = policy_allowing_example()
+    audit = tmp_path / "audit.jsonl"
+    logger = AuditLogger(audit, "mapped-ip-test", EnforcementMode.OS_ENFORCED_BWRAP)
+    connector_called = False
+
+    def connector(_address: tuple) -> socket.socket:
+        nonlocal connector_called
+        connector_called = True
+        raise AssertionError("Must not connect to mapped loopback")
+
+    proxy = PolicyEnforcingProxy(
+        tmp_path / "private" / "proxy.sock", policy, logger,
+        resolver=lambda _host, port: [
+            (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("::ffff:127.0.0.1", port, 0, 0))
+        ],
+        connector=connector,
+    )
+    proxy.start()
+    try:
+        client, response = request(proxy, b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
+        client.close()
+        assert response.startswith(b"HTTP/1.1 403 Forbidden")
+    finally:
+        proxy.stop()
+    assert not connector_called
+    assert verify_audit_log(audit).valid

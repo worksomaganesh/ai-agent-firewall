@@ -17,7 +17,7 @@ The roadmap contains **5 phases total: Phase 0 plus implementation Phases 1–4*
 | **1 — Reliable core** | Build the policy/control plane and audit foundation | **Complete against the current acceptance suite** | Strict YAML schema, deterministic policy engine, simulation, JSONL hash-chain audit, verifier, reports, regression tests and CI |
 | **2 — OS isolation and live network policy** | Run commands in a Linux sandbox with static filesystem protections, resource caps, network mediation, audit evidence and diffs | **Complete — latest Linux CI passed** | Bubblewrap namespaces, Seccomp-BPF, rlimits, fail-closed preflight, private workspace copy, host UNIX-socket policy proxy, guest loopback bridge, live network decisions, audit/report integration and enforcement tests |
 | **3 — Approvals and recovery** | Add safe, scoped human approvals and review/recovery workflows | **Complete — guarded-action and recovery tests pass in Linux CI** | Host TTY approval broker, exact one-use approvals, reusable guarded-action gate, guarded workspace file tools, target-state revalidation, review/export/discard workflows and audit evidence |
-| **4 — Adversarial evaluation and release** | Validate the threat model and prepare a responsible release | **In progress — adversarial suite and quality CI added; results being verified** | Malformed proxy-request tests, fail-closed framing checks, approval-audit tampering, security evaluation matrix, lint/type/package CI gates and residual-risk documentation |
+| **4 — Adversarial evaluation and release** | Validate the threat model and prepare a responsible release | **Automated validation expanded; current matrix run pending** | Malformed proxy-request tests, fail-closed framing checks, approval-audit tampering, security evaluation matrix, lint/type/package CI gates and residual-risk documentation |
 
 **How much is done?** Phases 0–3 are complete: **4 of 5 roadmap phases (80% by phase count)**. Phase 4 is now underway: malformed proxy framing and authority tests, audit tampering tests, a documented validation matrix, and a separate lint/type/package CI job have been added. The Phase 4 CI run is being verified; do not treat this phase as complete until the latest run is green and the remaining release-gate items are addressed. Phase count is not a measure of engineering effort or production readiness. This remains an educational prototype.
 
@@ -134,10 +134,13 @@ The requested command should not start when preflight or sandbox setup fails. Se
 ### Phase 4 — Adversarial evaluation and release (in progress)
 
 - Added adversarial tests for malformed authorities, invalid ports, userinfo, duplicate `Content-Length`, `Transfer-Encoding`, conflicting `Host`/CONNECT authority, oversized headers, and approval-audit tampering.
+- Added Hypothesis property-based tests for arbitrary authority strings, hostname normalization, HTTP header bytes, port ranges, and guarded workspace path traversal.
+- Added explicit DNS tests rejecting mixed public/private answers and IPv4-mapped IPv6 loopback destinations.
+- Expanded CI to Ubuntu 22.04 and 24.04; added repository-wide Ruff checks, wheel and source-distribution validation, and clean isolated installation checks outside the checkout.
 - Hardened the proxy to reject duplicate `Content-Length`, unsupported `Transfer-Encoding`, and CONNECT requests with body framing before DNS resolution or upstream connection.
 - Added `docs/security-evaluation-phase4.md` with the validation matrix, residual risks, and a release gate that remains intentionally unchecked.
 - Added a separate CI job for focused lint checks, selected strict type checks, CLI smoke tests, and wheel/sdist build-and-install verification.
-- Remaining: fix any CI failures, run broader fuzz/property-based tests, validate supported Linux/kernel/AppArmor combinations, complete full-repository quality checks, and obtain independent security review before a production claim.
+- Remaining: confirm all jobs pass on the current commit, address any failures, validate additional kernel/AppArmor configurations, run longer fuzz/stress campaigns, and obtain independent security review. A green CI run does not establish production readiness.
 
 ## Tests
 
