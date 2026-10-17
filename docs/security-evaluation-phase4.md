@@ -43,7 +43,7 @@ Do not call this a production release until all items are addressed:
 - [x] Add bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header bytes, port ranges, and guarded workspace path traversal.
 - [ ] Add policy-schema property tests, longer-running fuzzing, and differential parser testing.
 - [x] Run repository-wide Ruff checks and selected strict typing for guarded-action/workspace adapters.
-- [ ] Extend strict typing to the full repository and resolve any remaining findings.
+- [x] Extend strict mypy checks across the full `src/agent_boundary` package; all package modules pass.
 - [x] Build wheel and source distribution, run `twine check`, and install each artifact in a clean virtual environment outside the checkout.
 - [ ] Perform a threat-model review against the current code, not just the blueprint.
 - [ ] Obtain an independent security review.
@@ -52,6 +52,6 @@ Do not call this a production release until all items are addressed:
 
 ## Automated release-gate status
 
-The latest verified CI run for commit `9d717e824278bfa0ad656cb5a4c0ebaaf4dc118f` passed all three jobs: **83 tests passed on Ubuntu 22.04**, **83 tests passed on Ubuntu 24.04**, and the static/type/CLI/package job passed. That run includes bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header parsing, and workspace path validation; DNS regressions deny mixed public/private answers and IPv4-mapped loopback answers. The next documentation-only commit triggers the same gates again. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
+The latest verified CI run for commit `1514d1363838b9c2e24f1e4d1d5a64316fb34030` passed all three jobs: **83 tests passed on Ubuntu 22.04**, **83 tests passed on Ubuntu 24.04**, and the static/type/CLI/package job passed, including repository-wide Ruff, strict mypy across all package modules, wheel and sdist builds, metadata checks, and clean isolated installs. See [the successful run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38986891103). That run includes bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header parsing, and workspace path validation; DNS regressions deny mixed public/private answers and IPv4-mapped loopback answers. The latest documentation update will trigger the same gates again. Independent review and broader runtime configurations remain outstanding. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
 
 **Release status:** the automated gate is considered passed only when all matrix jobs on the current commit are green. Independent security review, broader kernel/runtime combinations, long-running stress/fuzz campaigns, and formal production threat-model sign-off are not automated and remain outstanding. This repository must continue to be described as an educational prototype.
