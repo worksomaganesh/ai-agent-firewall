@@ -15,7 +15,7 @@ The project is not certified or recommended as a production endpoint security bo
 - Adversarial tests: malformed proxy authorities and HTTP framing, duplicate/ambiguous headers, DNS rebinding/private-address checks, bounded Hypothesis tests for proxy parsing and workspace paths, generated policy schema inputs and invalid port ranges.
 - Enforcement tests: Bubblewrap namespaces, direct network isolation, secret/path restrictions, resource limits, fail-closed setup and session evidence, where the CI host supports the required Linux features.
 
-The Actions run linked from the README is the authoritative record for exact commit, test count, skipped tests, and job outcomes. Do not copy a passing result to a different commit.
+The latest successful workflow run linked from the README passed **93 tests in each of four configurations**: Ubuntu 22.04/Python 3.11 and Ubuntu 24.04/Python 3.11, 3.12 and 3.13. The static/type/package job also passed. See the [run record](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38987554557). The Actions run is the authoritative record for exact commit, test count, skipped tests, and job outcomes. Do not copy a passing result to a different commit.
 
 ## Supported / tested environments
 

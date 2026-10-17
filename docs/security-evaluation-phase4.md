@@ -17,7 +17,7 @@ This document records the current security validation strategy for agent-boundar
 | Workspace recovery | Export traversal, symlink source, no-overwrite, evidence-preserving discard | tests/test_phase3_workflows.py | Recovery from disk-full, power loss, and interrupted copies |
 | OS sandbox | Secret exclusion, no source-tree mount, direct network blocked, proxy bridge reaches policy proxy, rlimits, fail-closed start | tests/test_phase2_sandbox.py | Linux distribution/kernel/AppArmor matrix; descendants/resource aggregation |
 | Audit | Hash tampering, chain breaks, sequence gaps and approval-event tampering | tests/test_phase1_acceptance.py, tests/test_phase4_adversarial.py | External anchoring/key custody and filesystem crash durability |
-| Build quality | Lint, selected strict type checks, import/CLI smoke checks and full tests | GitHub Actions security-quality job | Full-repository strict mypy cleanup and independent review |
+| Build quality | Ruff, full-package strict mypy, import/CLI smoke checks, artifact validation, clean installs and full tests | GitHub Actions matrix and security-quality job | Longer fuzz/stress campaigns, broader runtime matrix and independent review |
 
 ## Newly hardened proxy behavior
 
@@ -48,11 +48,11 @@ Do not call this a production release until all items are addressed:
 - [x] Build wheel and source distribution, run `twine check`, and install each artifact in a clean virtual environment outside the checkout.
 - [ ] Perform a threat-model review against the current code, not just the blueprint.
 - [ ] Obtain an independent security review.
-- [ ] Publish a release checklist, support matrix, known limitations and reproducible test evidence.
+- [x] Publish a release checklist, support matrix, known limitations and reproducible test evidence.
 
 
 ## Automated release-gate status
 
-The latest verified CI run for commit `1514d1363838b9c2e24f1e4d1d5a64316fb34030` passed all three jobs: **83 tests passed on Ubuntu 22.04**, **83 tests passed on Ubuntu 24.04**, and the static/type/CLI/package job passed, including repository-wide Ruff, strict mypy across all package modules, wheel and sdist builds, metadata checks, and clean isolated installs. See [the successful run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38986891103). That run includes bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header parsing, and workspace path validation; DNS regressions deny mixed public/private answers and IPv4-mapped loopback answers. The latest documentation update will trigger the same gates again. Independent review and broader runtime configurations remain outstanding. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
+The latest successful workflow run for commit `efbb96c0a82f5d6cb58804340fa4b8fbd4455e39` passed all five jobs: **93 tests passed** on each of four combinations (Ubuntu 22.04/Python 3.11; Ubuntu 24.04/Python 3.11, 3.12, and 3.13), and the static/type/CLI/package job passed. The quality job includes repository-wide Ruff, strict mypy across all package modules, wheel and source-distribution builds, metadata checks, and clean isolated installs. See [the successful workflow run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38987554557).
 
-**Release status:** the automated gate is considered passed only when all matrix jobs on the current commit are green. Independent security review, broader kernel/runtime combinations, long-running stress/fuzz campaigns, and formal production threat-model sign-off are not automated and remain outstanding. This repository must continue to be described as an educational prototype.
+The automated Phase 4 implementation gate is complete for this matrix. Remaining release blockers are intentionally not represented as passing: independent security review, longer fuzz/stress and differential-parser campaigns, additional kernel/distribution/AppArmor combinations, and a complete code-based threat-model review. Passing CI does not prove production security. This repository remains an educational prototype.
