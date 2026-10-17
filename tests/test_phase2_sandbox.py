@@ -3,22 +3,17 @@
 from __future__ import annotations
 
 import json
-import os
 import struct
 import shutil
-import socket
-import subprocess
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from agent_boundary.cli import app
 from agent_boundary.audit.verifier import verify_audit_log
 from agent_boundary.sandbox.bwrap import (
     ResourceLimits,
     SandboxError,
-    _write_filter_pipe,
     build_bwrap_argv,
     parse_bwrap_version,
     preflight_bubblewrap,
