@@ -8,7 +8,7 @@ This document records the current security validation strategy for agent-boundar
 
 | Area | Adversarial cases | Evidence / test location | Boundary still to validate |
 |---|---|---|---|
-| Policy engine | Unknown operations, unmatched targets, deny-overrides-allow, path traversal | tests/test_phase1_acceptance.py, tests/test_phase1_regressions.py | Property-based malformed-authority, host-normalization, and path-normalization tests run in CI |
+| Policy engine | Unknown operations, unmatched targets, deny-overrides-allow, path traversal | tests/test_phase1_acceptance.py, tests/test_phase1_regressions.py | Property-based malformed-authority, host-normalization, path-normalization, and policy-schema tests run in CI |
 | Proxy authority parsing | Userinfo, invalid ports, fragments, path suffixes, malformed and single-label names, invalid labels | tests/test_phase4_adversarial.py | 500-example Hypothesis authority and header-input runs per CI job; differential HTTP parser testing remains future work |
 | HTTP request framing | Duplicate Content-Length, Transfer-Encoding, CL+TE, folded headers, invalid header names, oversized header blocks | tests/test_phase4_adversarial.py | Add property-based mutation corpus; keep unsupported framing denied |
 | DNS and routing | Unmatched host, private/loopback result, multiple resolved addresses | tests/test_network_proxy.py, tests/test_phase4_adversarial.py | IPv4-mapped IPv6 and mixed public/private DNS answers have explicit regression tests; unusual resolver records remain future work |
@@ -41,7 +41,8 @@ Do not call this a production release until all items are addressed:
 - [x] Run automated acceptance and sandbox-enforcement CI on Ubuntu 22.04 and Ubuntu 24.04; publish per-job results.
 - [ ] Expand the matrix to additional kernel versions, AppArmor configurations, and other supported Linux distributions.
 - [x] Add bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header bytes, port ranges, and guarded workspace path traversal.
-- [ ] Add policy-schema property tests, longer-running fuzzing, and differential parser testing.
+- [x] Add bounded property-based policy-schema tests for arbitrary unknown fields, generated port ranges, and malformed YAML mapping keys.
+- [ ] Run longer fuzzing and differential parser testing; current Hypothesis runs are bounded CI checks, not a long-running fuzz campaign.
 - [x] Run repository-wide Ruff checks and selected strict typing for guarded-action/workspace adapters.
 - [x] Extend strict mypy checks across the full `src/agent_boundary` package; all package modules pass.
 - [x] Build wheel and source distribution, run `twine check`, and install each artifact in a clean virtual environment outside the checkout.
