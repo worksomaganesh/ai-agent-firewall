@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypeAlias
 from urllib.parse import urlsplit
 
 from agent_boundary.audit.events import AuditEventType
@@ -26,6 +26,9 @@ _RELAY_IDLE_SECONDS = 180
 _LOCAL_NAMES = {"localhost", "localhost.localdomain", "metadata.google.internal"}
 _LOCAL_SUFFIXES = (".localhost", ".local", ".internal")
 
+SocketAddress: TypeAlias = tuple[str, int] | tuple[str, int, int, int]
+ResolverAddress: TypeAlias = tuple[int, int, int, str, SocketAddress]
+
 
 @dataclass(frozen=True)
 class _Access:
@@ -35,7 +38,7 @@ class _Access:
     enforced_decision: str
     matched_rule_id: str
     reason: str
-    addresses: tuple[tuple, ...] = ()
+    addresses: tuple[ResolverAddress, ...] = ()
     approval_grant: ApprovalGrant | None = None
 
     @property
@@ -61,8 +64,8 @@ class PolicyEnforcingProxy:
         policy: PolicyDocument,
         audit_logger: AuditLogger,
         request_timeout: float = 15.0,
-        resolver: Callable[[str, int], list[tuple]] | None = None,
-        connector: Callable[[tuple], socket.socket] | None = None,
+        resolver: Callable[[str, int], list[ResolverAddress]] | None = None,
+        connector: Callable[[ResolverAddress], socket.socket] | None = None,
         approval_broker: ApprovalBroker | None = None,
     ) -> None:
         self.socket_path = socket_path
@@ -202,7 +205,7 @@ class PolicyEnforcingProxy:
             raise ProxyRequestError("A valid destination host and port are required")
         return cls._normalize_host(parsed.hostname), port
 
-    def _resolve(self, host: str, port: int) -> list[tuple]:
+    def _resolve(self, host: str, port: int) -> list[ResolverAddress]:
         if self._resolver_override:
             return self._resolver_override(host, port)
         return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
@@ -279,7 +282,7 @@ class PolicyEnforcingProxy:
             "approval_supported": True, "approval_used": access.policy_decision == Decision.REQUIRE_APPROVAL.value, "request_path_logged": False,
         })
 
-    def _connect_one(self, address: tuple) -> socket.socket:
+    def _connect_one(self, address: ResolverAddress) -> socket.socket:
         if self._connector_override:
             return self._connector_override(address)
         family, socktype, proto, _canon, sockaddr = address

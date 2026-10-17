@@ -67,18 +67,18 @@ def load_policy(path: Path) -> PolicyDocument:
 def _verify_unique_rule_ids(doc: PolicyDocument) -> None:
     """Ensure every rule ID across the entire policy document is unique."""
     seen: set[str] = set()
-    all_rules = [
-        *doc.filesystem.deny,
-        *doc.filesystem.require_approval,
-        *doc.filesystem.allow,
-        *doc.commands.deny,
-        *doc.commands.require_approval,
-        *doc.commands.allow,
-        *doc.network.deny,
-        *doc.network.require_approval,
-        *doc.network.allow,
+    all_rule_ids = [
+        *(rule.id for rule in doc.filesystem.deny),
+        *(rule.id for rule in doc.filesystem.require_approval),
+        *(rule.id for rule in doc.filesystem.allow),
+        *(rule.id for rule in doc.commands.deny),
+        *(rule.id for rule in doc.commands.require_approval),
+        *(rule.id for rule in doc.commands.allow),
+        *(rule.id for rule in doc.network.deny),
+        *(rule.id for rule in doc.network.require_approval),
+        *(rule.id for rule in doc.network.allow),
     ]
-    for rule in all_rules:
-        if rule.id in seen:
-            raise PolicyValidationError(f"Duplicate rule id '{rule.id}' in policy document")
-        seen.add(rule.id)
+    for rule_id in all_rule_ids:
+        if rule_id in seen:
+            raise PolicyValidationError(f"Duplicate rule id '{rule_id}' in policy document")
+        seen.add(rule_id)

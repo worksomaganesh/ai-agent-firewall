@@ -28,9 +28,10 @@ async def _handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, so
     remote_writer: asyncio.StreamWriter | None = None
     tasks: list[asyncio.Task[None]] = []
     try:
-        remote_reader, remote_writer = await asyncio.wait_for(asyncio.open_unix_connection(socket_path), timeout=5)
+        remote_reader, connected_writer = await asyncio.wait_for(asyncio.open_unix_connection(socket_path), timeout=5)
+        remote_writer = connected_writer
         tasks = [
-            asyncio.create_task(_pump(reader, remote_writer)),
+            asyncio.create_task(_pump(reader, connected_writer)),
             asyncio.create_task(_pump(remote_reader, writer)),
         ]
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=600)

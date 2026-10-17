@@ -82,7 +82,7 @@ def parse_bwrap_version(version_output: str) -> tuple[int, int, int]:
     match = re.search(r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?!\d)", version_output)
     if not match:
         raise SandboxError(f"Could not parse Bubblewrap version output: {version_output.strip()!r}")
-    return tuple(int(match.group(index)) for index in range(1, 4))
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
 def _trusted_bwrap_binary() -> Path:
