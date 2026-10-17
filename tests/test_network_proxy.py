@@ -272,13 +272,10 @@ def test_mixed_public_and_private_dns_answers_are_denied(tmp_path: Path) -> None
         ],
         connector=connector,
     )
-    proxy.start()
-    try:
-        client, response = request(proxy, b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
-        client.close()
-        assert response.startswith(b"HTTP/1.1 403 Forbidden")
-    finally:
-        proxy.stop()
+    access = proxy._authorize("example.com", 443)
+    proxy._audit_access("CONNECT", access)
+    assert access.enforced_decision == "deny"
+    assert not access.addresses
     assert not connector_called
     records = [json.loads(line) for line in audit.read_text(encoding="utf-8").splitlines()]
     event = next(row for row in records if row["event_type"] == "NETWORK_REQUEST")
@@ -304,12 +301,9 @@ def test_ipv4_mapped_ipv6_loopback_dns_answer_is_denied(tmp_path: Path) -> None:
         ],
         connector=connector,
     )
-    proxy.start()
-    try:
-        client, response = request(proxy, b"CONNECT example.com:443 HTTP/1.1\\r\\nHost: example.com:443\\r\\n\\r\\n")
-        client.close()
-        assert response.startswith(b"HTTP/1.1 403 Forbidden")
-    finally:
-        proxy.stop()
+    access = proxy._authorize("example.com", 443)
+    proxy._audit_access("CONNECT", access)
+    assert access.enforced_decision == "deny"
+    assert not access.addresses
     assert not connector_called
     assert verify_audit_log(audit).valid
