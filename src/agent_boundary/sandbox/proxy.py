@@ -191,8 +191,8 @@ class PolicyEnforcingProxy:
 
     @classmethod
     def _parse_authority(cls, authority: str, default_port: int | None = None) -> tuple[str, int]:
-        value = authority.strip()
-        if not value or "@" in value or any(ch.isspace() for ch in value):
+        value = authority
+        if not value or value != value.strip() or "@" in value or any(ch.isspace() for ch in value):
             raise ProxyRequestError("Destination authority is malformed")
         parsed = urlsplit("//" + value)
         if parsed.username is not None or parsed.password is not None or parsed.path or parsed.query or parsed.fragment:
@@ -322,9 +322,11 @@ class PolicyEnforcingProxy:
 
     @staticmethod
     def _parse_headers(raw: bytes) -> tuple[str, str, str, list[tuple[str, str]]]:
+        if not raw.endswith(b"\r\n\r\n"):
+            raise ProxyRequestError("Incomplete HTTP header block")
         lines = raw.decode("iso-8859-1").split("\r\n")
-        pieces = lines[0].split()
-        if len(pieces) != 3:
+        pieces = lines[0].split(" ")
+        if len(pieces) != 3 or any(not piece for piece in pieces):
             raise ProxyRequestError("Malformed HTTP request line")
         method, target, version = pieces
         method = method.upper()
@@ -338,8 +340,10 @@ class PolicyEnforcingProxy:
                 break
             if line.startswith((" ", "\t")) or ":" not in line:
                 raise ProxyRequestError("Malformed or folded header")
-            name, value = line.split(":", 1)
-            name, value = name.strip().lower(), value.strip()
+            raw_name, value = line.split(":", 1)
+            if not raw_name or raw_name != raw_name.strip():
+                raise ProxyRequestError("Whitespace around header name is not allowed")
+            name, value = raw_name.lower(), value.strip()
             if not name or not all(ch.isalnum() or ch in "!#$%&'*+-.^_|~" for ch in name):
                 raise ProxyRequestError("Malformed header name")
             if any(ch in value for ch in ("\x00", "\r", "\n")):
@@ -351,7 +355,12 @@ class PolicyEnforcingProxy:
         encodings = [value for name, value in headers if name == "transfer-encoding"]
         if len(lengths) > 1:
             raise ProxyRequestError("Duplicate Content-Length headers are denied")
-        if lengths and not lengths[0].isdigit():
+        if lengths and (
+            not lengths[0]
+            or len(lengths[0]) > 20
+            or not lengths[0].isascii()
+            or not all("0" <= char <= "9" for char in lengths[0])
+        ):
             raise ProxyRequestError("Malformed Content-Length")
         if encodings:
             # Until request-body framing is fully normalized, refuse ambiguous Transfer-Encoding.

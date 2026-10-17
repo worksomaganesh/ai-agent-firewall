@@ -186,3 +186,34 @@ def test_audit_mutation_of_approval_chain_is_detected(tmp_path: Path) -> None:
     after = verify_audit_log(tampered)
     assert not after.valid
     assert after.errors
+
+
+
+@pytest.mark.parametrize(
+    "request_line",
+    [
+        "CONNECT  example.com:443 HTTP/1.1",
+        "CONNECT\texample.com:443\tHTTP/1.1",
+        " CONNECT example.com:443 HTTP/1.1",
+        "CONNECT example.com:443 HTTP/1.1 ",
+        "CONNECT example.com:443 HTTP/1.2",
+    ],
+)
+def test_adversarial_request_lines_fail_closed(request_line: str, tmp_path: Path) -> None:
+    proxy, _audit = make_proxy(tmp_path)
+    raw = (request_line + "\r\nHost: example.com:443\r\n\r\n").encode("iso-8859-1")
+    with pytest.raises(ProxyRequestError):
+        proxy._parse_headers(raw)
+
+
+def test_authority_with_surrounding_whitespace_is_rejected(tmp_path: Path) -> None:
+    proxy, _audit = make_proxy(tmp_path)
+    for authority in (" example.com:443", "example.com:443 ", "\texample.com:443"):
+        with pytest.raises(ProxyRequestError):
+            proxy._parse_authority(authority)
+
+
+def test_incomplete_header_block_is_rejected(tmp_path: Path) -> None:
+    proxy, _audit = make_proxy(tmp_path)
+    with pytest.raises(ProxyRequestError, match="Incomplete HTTP header block"):
+        proxy._parse_headers(b"CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n")

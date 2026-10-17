@@ -26,6 +26,12 @@ class UniqueKeySafeLoader(yaml.SafeLoader):
         mapping: dict[Any, Any] = {}
         for key_node, value_node in node.value:
             key = self.construct_object(key_node, deep=deep)
+            try:
+                hash(key)
+            except TypeError as exc:
+                raise PolicyValidationError(
+                    "YAML mapping keys must be scalar/hashable"
+                ) from exc
             if key in mapping:
                 raise PolicyValidationError(
                     f"Duplicate YAML key '{key}' detected at line {key_node.start_mark.line + 1}"
