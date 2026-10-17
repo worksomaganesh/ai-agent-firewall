@@ -5,7 +5,7 @@
 agent-boundary is a command-line prototype that runs a coding agent inside a Bubblewrap-based Linux sandbox, applies a deterministic policy to mediated network requests, supports scoped host-terminal approvals, and records a reviewable session trail. It is designed around one principle: **a prompt is not a security boundary**. Model instructions can be useful, but filesystem isolation, network isolation and process restrictions must be enforced by operating-system controls.
 
 > [!CAUTION]
-> **Educational security prototype — not production endpoint protection.** Do not rely on this project as the only protection for important credentials, a sensitive workstation or production infrastructure. It has automated tests, but has not received an independent professional security audit. Read [Security limitations](#security-limitations-and-residual-risk) before running an untrusted agent.
+> **Educational security prototype — not production endpoint protection.** Do not rely on this project as the only protection for important credentials, a sensitive workstation or production infrastructure. It has automated tests, but has not received an independent professional security audit. Read [Security model and limitations](#security-model) before running an untrusted agent.
 
 [Latest successful automated CI run](https://github.com/worksomaganesh/ai-agent-firewall/actions/runs/38987741089) · [Phase IV security evaluation](docs/security-evaluation-phase4.md) · [Release checklist](docs/release-checklist.md)
 
