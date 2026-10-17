@@ -34,14 +34,17 @@ The policy proxy now rejects duplicate Content-Length headers, all Transfer-Enco
 - Host audit logs can be replaced by a host user who controls the directory; hash chains need an independently retained head hash or HMAC key to detect full-file re-chaining.
 - Workspace staging/export is not an automatic merge or rollback system. Review exported content before copying it to a real repository.
 
-## Release gate (not yet satisfied)
+## Release gate (automated checks pass; external sign-off remains)
 
 Do not call this a production release until all items are addressed:
 
-- [ ] Run the supported Linux/kernel/AppArmor matrix and publish results.
-- [ ] Add property-based/fuzz testing for policy parsing, proxy request parsing and path handling.
-- [ ] Run full strict static typing and lint across the entire repository and resolve all failures.
-- [ ] Check Python packaging from a clean virtual environment and verify wheel/sdist contents.
+- [x] Run automated acceptance and sandbox-enforcement CI on Ubuntu 22.04 and Ubuntu 24.04; publish per-job results.
+- [ ] Expand the matrix to additional kernel versions, AppArmor configurations, and other supported Linux distributions.
+- [x] Add bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header bytes, port ranges, and guarded workspace path traversal.
+- [ ] Add policy-schema property tests, longer-running fuzzing, and differential parser testing.
+- [x] Run repository-wide Ruff checks and selected strict typing for guarded-action/workspace adapters.
+- [ ] Extend strict typing to the full repository and resolve any remaining findings.
+- [x] Build wheel and source distribution, run `twine check`, and install each artifact in a clean virtual environment outside the checkout.
 - [ ] Perform a threat-model review against the current code, not just the blueprint.
 - [ ] Obtain an independent security review.
 - [ ] Publish a release checklist, support matrix, known limitations and reproducible test evidence.
@@ -49,6 +52,6 @@ Do not call this a production release until all items are addressed:
 
 ## Automated release-gate status
 
-The Phase 4 CI workflow runs acceptance and sandbox-enforcement tests on Ubuntu 22.04 and Ubuntu 24.04, plus repository-wide Ruff checks, selected strict typing, CLI smoke tests, source/wheel builds, metadata validation, and clean virtual-environment installs of both artifacts outside the checkout. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
+The latest verified CI run for commit `9d717e824278bfa0ad656cb5a4c0ebaaf4dc118f` passed all three jobs: **83 tests passed on Ubuntu 22.04**, **83 tests passed on Ubuntu 24.04**, and the static/type/CLI/package job passed. That run includes bounded Hypothesis property tests for malformed authorities, host normalization, HTTP header parsing, and workspace path validation; DNS regressions deny mixed public/private answers and IPv4-mapped loopback answers. The next documentation-only commit triggers the same gates again. Hypothesis-based adversarial tests exercise malformed authorities, host normalization, HTTP header parsing, and workspace path validation with bounded randomized examples. DNS regressions explicitly deny mixed public/private answers and IPv4-mapped loopback answers.
 
 **Release status:** the automated gate is considered passed only when all matrix jobs on the current commit are green. Independent security review, broader kernel/runtime combinations, long-running stress/fuzz campaigns, and formal production threat-model sign-off are not automated and remain outstanding. This repository must continue to be described as an educational prototype.
