@@ -27,7 +27,7 @@ _LOCAL_NAMES = {"localhost", "localhost.localdomain", "metadata.google.internal"
 _LOCAL_SUFFIXES = (".localhost", ".local", ".internal")
 
 SocketAddress: TypeAlias = tuple[str, int] | tuple[str, int, int, int] | tuple[int, bytes]
-ResolverAddress: TypeAlias = tuple[int, int, int, str, SocketAddress]
+ResolverAddress: TypeAlias = tuple[socket.AddressFamily, socket.SocketKind, int, str, SocketAddress]
 
 
 @dataclass(frozen=True)
