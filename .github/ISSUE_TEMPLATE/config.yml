@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability reporting
+    url: https://github.com/worksomaganesh/ai-agent-firewall/blob/main/SECURITY.md
+    about: Read the private reporting instructions before sharing security-sensitive details. Do not post exploitable vulnerability details in a public issue.
+  - name: Project overview and known limitations
+    url: https://github.com/worksomaganesh/ai-agent-firewall
+    about: Review setup instructions, scope, security boundaries, and documented limitations before filing a general issue.
