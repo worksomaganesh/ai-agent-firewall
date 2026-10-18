@@ -1,0 +1,117 @@
+name: Bug report
+description: Report a reproducible defect in agent-boundary. Do not use this public form for security vulnerabilities.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug.
+
+        **Security issue? Do not disclose exploit details here.** Read [SECURITY.md](https://github.com/worksomaganesh/ai-agent-firewall/blob/main/SECURITY.md) and use a private reporting route.
+
+        Before submitting, check whether the behavior is already documented in the README or security evaluation. Remove credentials, personal data, private source code, and sensitive paths from all logs and examples.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Select the component most closely related to the issue.
+      options:
+        - CLI and packaging
+        - Policy schema or YAML parser
+        - Policy evaluation
+        - Bubblewrap or sandbox startup
+        - Workspace staging, snapshots, or export
+        - Network proxy, DNS, or guest bridge
+        - Approvals or guarded actions
+        - Audit log or report
+        - Tests or CI
+        - Documentation
+        - Other or unsure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      description: Prefer the exact commit SHA if testing the development branch.
+      placeholder: "0.1.0 or a commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system and version
+      description: Include Linux distribution and release, if applicable.
+      placeholder: "Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: kernel
+    attributes:
+      label: Kernel and Bubblewrap versions
+      description: Required where the issue involves sandbox or OS-enforcement behavior. Enter N/A if not applicable.
+      placeholder: "Kernel version; bwrap --version"
+    validations:
+      required: false
+  - type: input
+    id: python
+    attributes:
+      label: Python version
+      description: Include the interpreter version used to run the project.
+      placeholder: "Python 3.12.x"
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Bug summary
+      description: Describe the observable defect and its impact.
+      placeholder: What happened, and why is it unexpected?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Use a disposable local workspace and synthetic data. Keep the steps as small and repeatable as possible.
+      placeholder: |
+        1. Prepare a disposable test directory.
+        2. Run the relevant command with a minimal policy.
+        3. Observe the unexpected result.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: State the documented or intended behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the actual result, exit code, and relevant error message if available.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or test output
+      description: Redact secrets, usernames, private paths, tokens, and personal data. Do not attach sensitive proof-of-concept material.
+      render: shell
+    validations:
+      required: false
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Submission checklist
+      options:
+        - label: I checked the documentation and searched existing issues for a similar report.
+          required: true
+        - label: I used a disposable or otherwise authorized test environment.
+          required: true
+        - label: I removed real credentials, private keys, tokens, personal data, and other sensitive information.
+          required: true
+        - label: This report does not disclose an unresolved security vulnerability or exploit details.
+          required: true
